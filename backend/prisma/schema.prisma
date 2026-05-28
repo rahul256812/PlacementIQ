@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  RECRUITER
+  ADMIN
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SHORTLISTED
+  REJECTED
+  HIRED
+}
+
+enum RecruiterStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  passwordHash   String
+  role           Role     @default(STUDENT)
+  fullName       String
+  createdAt      DateTime @default(now())
+
+  studentProfile   StudentProfile?
+  recruiterProfile RecruiterProfile?
+}
+
+model StudentProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  college         String?
+  branch          String?
+  graduationYear  Int?
+  skills          String?
+  cgpa            Float?
+  
+  user            User     @relation(fields: [userId], references: [id])
+  applications    Application[]
+}
+
+model RecruiterProfile {
+  id              String          @id @default(uuid())
+  userId          String          @unique
+  companyName     String
+  designation     String
+  status          RecruiterStatus @default(PENDING)
+
+  user            User            @relation(fields: [userId], references: [id])
+  jobs            Job[]
+}
+
+model Job {
+  id                 String   @id @default(uuid())
+  recruiterProfileId String
+  title              String
+  description        String
+  requirements       String
+  salaryRange        String?
+  jobType            String?
+  location           String?
+  isOpen             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  recruiter          RecruiterProfile @relation(fields: [recruiterProfileId], references: [id])
+  applications       Application[]
+}
+
+model Application {
+  id               String            @id @default(uuid())
+  jobId            String
+  studentProfileId String
+  status           ApplicationStatus @default(APPLIED)
+  coverLetterText  String            
+  appliedAt        DateTime          @default(now())
+
+  job              Job               @relation(fields: [jobId], references: [id])
+  student          StudentProfile    @relation(fields: [studentProfileId], references: [id])
+}
