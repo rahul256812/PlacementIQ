@@ -23,6 +23,14 @@ export const AuthService = {
     const res = await api.post('/auth/signup', data);
     return res.data;
   },
+  getProfile: async () => {
+    const res = await api.get('/auth/profile');
+    return res.data;
+  },
+  updateProfile: async (data: any) => {
+    const res = await api.put('/auth/profile', data);
+    return res.data;
+  },
 };
 
 export const JobService = {
@@ -36,6 +44,10 @@ export const JobService = {
   },
   createJob: async (data: any) => {
     const res = await api.post('/jobs', data);
+    return res.data;
+  },
+  updateJob: async (id: string, data: any) => {
+    const res = await api.put(`/jobs/${id}`, data);
     return res.data;
   },
 };
@@ -66,6 +78,21 @@ export const AdminService = {
   },
   updateRecruiterStatus: async (id: string, status: string) => {
     const res = await api.patch(`/admin/recruiters/${id}/status`, { status });
+    return res.data;
+  },
+};
+
+export const AnalyticsService = {
+  getAdminAnalytics: async () => {
+    const res = await api.get('/analytics/admin');
+    return res.data;
+  },
+  getRecruiterAnalytics: async () => {
+    const res = await api.get('/analytics/recruiter');
+    return res.data;
+  },
+  getStudentAnalytics: async () => {
+    const res = await api.get('/analytics/student');
     return res.data;
   },
 };

@@ -46,6 +46,8 @@ model StudentProfile {
   graduationYear  Int?
   skills          String?
   cgpa            Float?
+  experience      String?
+  projects        String?
   
   user            User     @relation(fields: [userId], references: [id])
   applications    Application[]
@@ -72,6 +74,7 @@ model Job {
   jobType            String?
   location           String?
   isOpen             Boolean  @default(true)
+  questions          Json?
   createdAt          DateTime @default(now())
 
   recruiter          RecruiterProfile @relation(fields: [recruiterProfileId], references: [id])
@@ -84,6 +87,7 @@ model Application {
   studentProfileId String
   status           ApplicationStatus @default(APPLIED)
   coverLetterText  String            
+  answers          Json?
   appliedAt        DateTime          @default(now())
 
   job              Job               @relation(fields: [jobId], references: [id])

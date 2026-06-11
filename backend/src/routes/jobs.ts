@@ -34,7 +34,7 @@ router.post('/', authenticate, requireRole(['RECRUITER']), async (req: AuthReque
       return res.status(403).json({ error: 'Your account is pending admin approval' });
     }
 
-    const { title, description, requirements, salaryRange, jobType, location } = req.body;
+    const { title, description, requirements, salaryRange, jobType, location, questions } = req.body;
 
     const job = await prisma.job.create({
       data: {
@@ -44,7 +44,8 @@ router.post('/', authenticate, requireRole(['RECRUITER']), async (req: AuthReque
         requirements,
         salaryRange,
         jobType,
-        location
+        location,
+        questions: questions || null
       }
     });
 
@@ -76,6 +77,45 @@ router.get('/me', authenticate, requireRole(['RECRUITER']), async (req: AuthRequ
     res.json(jobs);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch your jobs' });
+  }
+});
+
+// Update a job (Recruiter only, must be owner)
+router.put('/:id', authenticate, requireRole(['RECRUITER']), async (req: AuthRequest, res: any) => {
+  try {
+    const id = req.params.id as string;
+    const recruiterProfile = await prisma.recruiterProfile.findUnique({
+      where: { userId: req.user!.id }
+    });
+
+    if (!recruiterProfile) return res.status(404).json({ error: 'Profile not found' });
+
+    const job = await prisma.job.findUnique({ where: { id } });
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.recruiterProfileId !== recruiterProfile.id) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const { title, description, requirements, salaryRange, jobType, location, questions, isOpen } = req.body;
+
+    const updatedJob = await prisma.job.update({
+      where: { id },
+      data: {
+        title: title !== undefined ? title : undefined,
+        description: description !== undefined ? description : undefined,
+        requirements: requirements !== undefined ? requirements : undefined,
+        salaryRange: salaryRange !== undefined ? salaryRange : undefined,
+        jobType: jobType !== undefined ? jobType : undefined,
+        location: location !== undefined ? location : undefined,
+        questions: questions !== undefined ? questions : undefined,
+        isOpen: isOpen !== undefined ? isOpen : undefined
+      }
+    });
+
+    res.json(updatedJob);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to update job' });
   }
 });
 

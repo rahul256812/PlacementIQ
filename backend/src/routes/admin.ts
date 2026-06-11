@@ -22,7 +22,7 @@ router.get('/recruiters', authenticate, requireRole(['ADMIN']), async (req: Auth
 // Approve or reject a recruiter
 router.patch('/recruiters/:id/status', authenticate, requireRole(['ADMIN']), async (req: AuthRequest, res: any) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { status } = req.body; // 'APPROVED' | 'REJECTED'
 
     if (!['APPROVED', 'REJECTED'].includes(status)) {

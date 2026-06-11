@@ -7,8 +7,8 @@ const router = Router();
 // Apply to a job (Student only)
 router.post('/:jobId', authenticate, requireRole(['STUDENT']), async (req: AuthRequest, res: any) => {
   try {
-    const { jobId } = req.params;
-    const { coverLetterText } = req.body;
+    const jobId = req.params.jobId as string;
+    const { coverLetterText, answers } = req.body;
 
     const studentProfile = await prisma.studentProfile.findUnique({
       where: { userId: req.user!.id }
@@ -27,7 +27,8 @@ router.post('/:jobId', authenticate, requireRole(['STUDENT']), async (req: AuthR
       data: {
         jobId,
         studentProfileId: studentProfile.id,
-        coverLetterText: coverLetterText || ''
+        coverLetterText: coverLetterText || '',
+        answers: answers || null
       }
     });
 
@@ -67,7 +68,7 @@ router.get('/me', authenticate, requireRole(['STUDENT']), async (req: AuthReques
 // Get applicants for a job (Recruiter only)
 router.get('/job/:jobId', authenticate, requireRole(['RECRUITER']), async (req: AuthRequest, res: any) => {
   try {
-    const { jobId } = req.params;
+    const jobId = req.params.jobId as string;
 
     const recruiterProfile = await prisma.recruiterProfile.findUnique({
       where: { userId: req.user!.id }
@@ -82,6 +83,7 @@ router.get('/job/:jobId', authenticate, requireRole(['RECRUITER']), async (req: 
     const applications = await prisma.application.findMany({
       where: { jobId },
       include: {
+        job: true,
         student: {
           include: { user: { select: { fullName: true, email: true } } }
         }
@@ -98,13 +100,13 @@ router.get('/job/:jobId', authenticate, requireRole(['RECRUITER']), async (req: 
 // Update application status (Recruiter only)
 router.patch('/:applicationId/status', authenticate, requireRole(['RECRUITER']), async (req: AuthRequest, res: any) => {
   try {
-    const { applicationId } = req.params;
+    const applicationId = req.params.applicationId as string;
     const { status } = req.body;
 
     const application = await prisma.application.findUnique({
       where: { id: applicationId },
       include: { job: true }
-    });
+    }) as any;
 
     if (!application) return res.status(404).json({ error: 'Application not found' });
 
