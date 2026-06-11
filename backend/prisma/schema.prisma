@@ -7,6 +7,207 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id               String            @id @default(uuid())
+  email            String            @unique
+  passwordHash     String
+  role             Role              @default(STUDENT)
+  fullName         String
+  createdAt        DateTime          @default(now())
+  recruiterProfile RecruiterProfile?
+  studentProfile   StudentProfile?
+}
+
+model StudentProfile {
+  id             String        @id @default(uuid())
+  userId         String        @unique
+  college        String?
+  branch         String?
+  graduationYear Int?
+  skills         String?
+  cgpa           Float?
+  experience     String?
+  projects       String?
+  applications   Application[]
+  user           User          @relation(fields: [userId], references: [id])
+}
+
+model RecruiterProfile {
+  id           String           @id @default(uuid())
+  userId       String           @unique
+  companyName  String
+  designation  String
+  status       RecruiterStatus  @default(PENDING)
+  jobs         Job[]
+  activityLogs JobActivityLog[]
+  user         User             @relation(fields: [userId], references: [id])
+}
+
+model Job {
+  id                 String           @id @default(uuid())
+  recruiterProfileId String
+  title              String
+  description        String
+  requirements       String
+  salaryRange        String?
+  jobType            String?
+  location           String?
+  isOpen             Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  questions          Json?
+  applyEndDate       DateTime?
+  applyStartDate     DateTime?
+  applications       Application[]
+  rounds             InterviewRound[]
+  recruiter          RecruiterProfile @relation(fields: [recruiterProfileId], references: [id])
+  roundMessages      RoundMessage[]
+}
+
+model Application {
+  id               String              @id @default(uuid())
+  jobId            String
+  studentProfileId String
+  status           ApplicationStatus   @default(APPLIED)
+  coverLetterText  String
+  appliedAt        DateTime            @default(now())
+  answers          Json?
+  job              Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  student          StudentProfile      @relation(fields: [studentProfileId], references: [id])
+  progressions     CandidateProgress[]
+}
+
+model InterviewRound {
+  id                  String              @id @default(uuid())
+  jobId               String
+  title               String
+  type                String
+  format              String
+  description         String?
+  instructions        String?
+  order               Int
+  createdAt           DateTime            @default(now())
+  isMcqPublished      Boolean             @default(false)
+  isCodingPublished   Boolean             @default(false)
+  isMcqResultReleased Boolean             @default(false)
+  mcqDuration         Int?
+  endDate             DateTime?
+  startDate           DateTime?
+  codingDuration      Int?
+  progressions        CandidateProgress[]
+  codingQuestions     CodingQuestion[]
+  job                 Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  mcqQuestions        McqQuestion[]
+  messages            RoundMessage[]
+}
+
+model CandidateProgress {
+  id                String                @id @default(uuid())
+  applicationId     String
+  roundId           String
+  status            String                @default("PENDING")
+  feedback          String?
+  updatedAt         DateTime              @updatedAt
+  codingTestExited    Boolean               @default(false)
+  meetLink            String?
+  isMeetLinkPublished Boolean               @default(false)
+  codingSubmissions   CandidateCodingSub[]
+  mcqResponse         CandidateMcqResponse?
+  application         Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  round               InterviewRound        @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, roundId])
+}
+
+model RoundMessage {
+  id         String          @id @default(uuid())
+  jobId      String
+  roundId    String?
+  senderId   String
+  senderName String
+  content    String
+  createdAt  DateTime        @default(now())
+  job        Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  round      InterviewRound? @relation(fields: [roundId], references: [id], onDelete: Cascade)
+}
+
+model JobActivityLog {
+  id                 String           @id @default(uuid())
+  recruiterProfileId String
+  jobId              String?
+  jobTitle           String
+  action             String
+  timestamp          DateTime         @default(now())
+  details            String?
+  recruiter          RecruiterProfile @relation(fields: [recruiterProfileId], references: [id], onDelete: Cascade)
+}
+
+model McqQuestion {
+  id             String         @id @default(uuid())
+  roundId        String
+  questionText   String
+  imageBlob      String?
+  type           String
+  options        Json
+  correctAnswers Json
+  marks          Int            @default(1)
+  createdAt      DateTime       @default(now())
+  duration       Int?
+  round          InterviewRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+}
+
+model CandidateMcqResponse {
+  id                  String            @id @default(uuid())
+  candidateProgressId String            @unique
+  answers             Json
+  score               Float?
+  totalPossibleMarks  Float?
+  submittedAt         DateTime          @default(now())
+  timeTaken           Int?
+  progress            CandidateProgress @relation(fields: [candidateProgressId], references: [id], onDelete: Cascade)
+}
+
+model CodingQuestion {
+  id              String               @id @default(uuid())
+  roundId         String
+  title           String
+  description     String
+  constraints     String?
+  imageBlob       String?
+  starterCode     Json
+  marks           Int                  @default(10)
+  maxRunAttempts  Int?
+  createdAt       DateTime             @default(now())
+  submissions     CandidateCodingSub[]
+  round           InterviewRound       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  testCases       CodingTestCase[]
+}
+
+model CodingTestCase {
+  id             String         @id @default(uuid())
+  questionId     String
+  input          String
+  expectedOutput String
+  isHidden       Boolean        @default(false)
+  question       CodingQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model CandidateCodingSub {
+  id                  String            @id @default(uuid())
+  candidateProgressId String
+  codingQuestionId    String
+  code                String
+  language            String
+  status              String
+  passedCasesCount    Int
+  totalCasesCount     Int
+  score               Float
+  runtimeMessage      String?
+  submittedAt         DateTime          @default(now())
+  timeTaken           Int?
+  progress            CandidateProgress @relation(fields: [candidateProgressId], references: [id], onDelete: Cascade)
+  question            CodingQuestion    @relation(fields: [codingQuestionId], references: [id], onDelete: Cascade)
+}
+
 enum Role {
   STUDENT
   RECRUITER
@@ -26,118 +227,4 @@ enum RecruiterStatus {
   PENDING
   APPROVED
   REJECTED
-}
-
-model User {
-  id             String   @id @default(uuid())
-  email          String   @unique
-  passwordHash   String
-  role           Role     @default(STUDENT)
-  fullName       String
-  createdAt      DateTime @default(now())
-
-  studentProfile   StudentProfile?
-  recruiterProfile RecruiterProfile?
-}
-
-model StudentProfile {
-  id              String   @id @default(uuid())
-  userId          String   @unique
-  college         String?
-  branch          String?
-  graduationYear  Int?
-  skills          String?
-  cgpa            Float?
-  experience      String?
-  projects        String?
-  
-  user            User     @relation(fields: [userId], references: [id])
-  applications    Application[]
-}
-
-model RecruiterProfile {
-  id              String          @id @default(uuid())
-  userId          String          @unique
-  companyName     String
-  designation     String
-  status          RecruiterStatus @default(PENDING)
-
-  user            User            @relation(fields: [userId], references: [id])
-  jobs            Job[]
-}
-
-model Job {
-  id                 String   @id @default(uuid())
-  recruiterProfileId String
-  title              String
-  description        String
-  requirements       String
-  salaryRange        String?
-  jobType            String?
-  location           String?
-  isOpen             Boolean  @default(true)
-  questions          Json?
-  createdAt          DateTime @default(now())
-
-  recruiter          RecruiterProfile @relation(fields: [recruiterProfileId], references: [id])
-  applications       Application[]
-  rounds             InterviewRound[]
-  roundMessages      RoundMessage[]
-}
-
-model Application {
-  id               String            @id @default(uuid())
-  jobId            String
-  studentProfileId String
-  status           ApplicationStatus @default(APPLIED)
-  coverLetterText  String            
-  answers          Json?
-  appliedAt        DateTime          @default(now())
-
-  job              Job               @relation(fields: [jobId], references: [id])
-  student          StudentProfile    @relation(fields: [studentProfileId], references: [id])
-  progressions     CandidateProgress[]
-}
-
-model InterviewRound {
-  id           String              @id @default(uuid())
-  jobId        String
-  title        String
-  type         String              // MCQ, CODING, TECHNICAL_INTERVIEW, HR_INTERVIEW, GROUP_DISCUSSION, CUSTOM
-  format       String              // ONLINE, IN_PERSON
-  description  String?
-  instructions String?
-  order        Int                 // 0-indexed sorting
-  createdAt    DateTime            @default(now())
-
-  job          Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  progressions CandidateProgress[]
-  messages     RoundMessage[]
-}
-
-model CandidateProgress {
-  id            String         @id @default(uuid())
-  applicationId String
-  roundId       String
-  status        String         @default("PENDING") // PENDING, QUALIFIED, REJECTED
-  feedback      String?
-  updatedAt     DateTime       @updatedAt
-
-  application   Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  round         InterviewRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
-
-  @@unique([applicationId, roundId])
-}
-
-model RoundMessage {
-  id         String          @id @default(uuid())
-  jobId      String
-  roundId    String?         // Null means general announcement for all applicants
-  senderId   String
-  senderName String
-  content    String
-  createdAt  DateTime        @default(now())
-
-  job        Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  round      InterviewRound? @relation(fields: [roundId], references: [id], onDelete: Cascade)
 }

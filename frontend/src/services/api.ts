@@ -50,6 +50,14 @@ export const JobService = {
     const res = await api.put(`/jobs/${id}`, data);
     return res.data;
   },
+  deleteJob: async (id: string) => {
+    const res = await api.delete(`/jobs/${id}`);
+    return res.data;
+  },
+  getJobHistory: async () => {
+    const res = await api.get('/jobs/history');
+    return res.data;
+  },
 };
 
 export const ApplicationService = {
@@ -120,6 +128,62 @@ export const RoundService = {
   },
   sendMessage: async (jobId: string, data: { roundId: string | null; content: string }) => {
     const res = await api.post(`/jobs/${jobId}/messages`, data);
+    return res.data;
+  },
+  saveMcqQuestions: async (roundId: string, questions: any[], mcqDuration?: number | null) => {
+    const res = await api.post(`/rounds/${roundId}/mcqs`, { questions, mcqDuration });
+    return res.data;
+  },
+  getMcqQuestions: async (roundId: string) => {
+    const res = await api.get(`/rounds/${roundId}/mcqs`);
+    return res.data;
+  },
+  publishMcqTest: async (roundId: string) => {
+    const res = await api.post(`/rounds/${roundId}/mcq-publish`);
+    return res.data;
+  },
+  publishCodingTest: async (roundId: string) => {
+    const res = await api.post(`/rounds/${roundId}/coding-publish`);
+    return res.data;
+  },
+  releaseMcqResults: async (roundId: string) => {
+    const res = await api.post(`/rounds/${roundId}/mcq-release-results`);
+    return res.data;
+  },
+  submitMcqAnswers: async (applicationId: string, roundId: string, data: { answers: any; timeTaken?: number }) => {
+    const res = await api.post(`/applications/${applicationId}/rounds/${roundId}/mcq-submit`, data);
+    return res.data;
+  },
+  autoShortlistMcq: async (roundId: string, count: number) => {
+    const res = await api.post(`/rounds/${roundId}/auto-shortlist`, { count });
+    return res.data;
+  },
+  saveCodingQuestion: async (roundId: string, data: any) => {
+    const res = await api.post(`/rounds/${roundId}/coding`, data);
+    return res.data;
+  },
+  getCodingQuestion: async (roundId: string) => {
+    const res = await api.get(`/rounds/${roundId}/coding`);
+    return res.data;
+  },
+  deleteCodingQuestion: async (roundId: string, questionId: string) => {
+    const res = await api.delete(`/rounds/${roundId}/coding/${questionId}`);
+    return res.data;
+  },
+  runCodingTest: async (roundId: string, data: { code: string; language: string; questionId?: string; runCount?: number }) => {
+    const res = await api.post(`/rounds/${roundId}/coding/run`, data);
+    return res.data;
+  },
+  submitCodingSolution: async (applicationId: string, roundId: string, data: { code: string; language: string; questionId?: string; timeTaken?: number }) => {
+    const res = await api.post(`/applications/${applicationId}/rounds/${roundId}/coding-submit`, data);
+    return res.data;
+  },
+  exitCodingTest: async (applicationId: string, roundId: string) => {
+    const res = await api.post(`/applications/${applicationId}/rounds/${roundId}/coding-exit`);
+    return res.data;
+  },
+  updateMeetLink: async (applicationId: string, roundId: string, data: { meetLink: string; isMeetLinkPublished: boolean }) => {
+    const res = await api.post(`/applications/${applicationId}/rounds/${roundId}/meet-link`, data);
     return res.data;
   },
 };

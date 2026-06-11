@@ -23,6 +23,19 @@ router.post('/:jobId', authenticate, requireRole(['STUDENT']), async (req: AuthR
 
     if (existingApp) return res.status(400).json({ error: 'Already applied to this job' });
 
+    const job = await prisma.job.findUnique({
+      where: { id: jobId }
+    });
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const now = new Date();
+    if (job.applyStartDate && now < new Date(job.applyStartDate)) {
+      return res.status(400).json({ error: 'Job applications have not opened yet' });
+    }
+    if (job.applyEndDate && now > new Date(job.applyEndDate)) {
+      return res.status(400).json({ error: 'Job applications have closed' });
+    }
+
     const application = await prisma.application.create({
       data: {
         jobId,
@@ -57,7 +70,7 @@ router.get('/me', authenticate, requireRole(['STUDENT']), async (req: AuthReques
           }
         },
         progressions: {
-          include: { round: true }
+          include: { round: true, mcqResponse: true, codingSubmissions: { include: { question: true } } }
         }
       },
       orderBy: { appliedAt: 'desc' }
@@ -93,7 +106,7 @@ router.get('/job/:jobId', authenticate, requireRole(['RECRUITER']), async (req: 
           }
         },
         progressions: {
-          include: { round: true }
+          include: { round: true, mcqResponse: true, codingSubmissions: { include: { question: true } } }
         },
         student: {
           include: { user: { select: { fullName: true, email: true } } }

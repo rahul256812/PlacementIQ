@@ -21,8 +21,20 @@ import {
   Plus,
   Trash2,
   Volume2,
-  Layers
+  Layers,
+  History,
+  X,
+  ArrowLeft,
+  Edit3
 } from 'lucide-react';
+
+const formatDatetimeLocal = (dateString: string | null | undefined) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '';
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
 export function RecruiterDashboard() {
   const { user } = useAuth();
@@ -38,6 +50,8 @@ export function RecruiterDashboard() {
     salaryRange: string;
     jobType: string;
     questions: string[];
+    applyStartDate: string;
+    applyEndDate: string;
     rounds: any[];
   }>({
     title: '',
@@ -47,11 +61,41 @@ export function RecruiterDashboard() {
     salaryRange: '',
     jobType: 'Full-time',
     questions: [],
+    applyStartDate: '',
+    applyEndDate: '',
     rounds: []
   });
   const [questionInput, setQuestionInput] = useState('');
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'JOBS' | 'ANALYTICS' | 'MESSAGES'>('JOBS');
+  const [activeTab, setActiveTab] = useState<'JOBS' | 'ANALYTICS' | 'MESSAGES' | 'HISTORY'>('JOBS');
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [jobToDelete, setJobToDelete] = useState<{ id: string, title: string } | null>(null);
+  
+  // MCQ Configuration State
+  const [activeMcqRound, setActiveMcqRound] = useState<any | null>(null);
+  const [mcqQuestions, setMcqQuestions] = useState<any[]>([]);
+  const [mcqSortOrder, setMcqSortOrder] = useState<'DEFAULT' | 'HIGH_TO_LOW' | 'LOW_TO_HIGH'>('DEFAULT');
+  
+  // Coding Configuration State
+  const [activeCodingRound, setActiveCodingRound] = useState<any | null>(null);
+  const [codingQuestions, setCodingQuestions] = useState<any[]>([]);
+  const [editingQuestion, setEditingQuestion] = useState<any | null>(null); // null = view list, non-null = edit or new
+  const [codingTitle, setCodingTitle] = useState('');
+  const [codingDescription, setCodingDescription] = useState('');
+  const [codingConstraints, setCodingConstraints] = useState('');
+  const [codingMarks, setCodingMarks] = useState('10');
+  const [codingTestCases, setCodingTestCases] = useState<any[]>([]);
+  const [codingStarterCode, setCodingStarterCode] = useState<Record<string, string>>({
+    javascript: 'function solve() {\n  // Write JavaScript here\n}',
+    python: 'def solve():\n    # Write Python here\n    pass',
+    typescript: 'function solve(): void {\n  // Write TypeScript here\n}',
+    cpp: '#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write C++ here\n    return 0;\n}',
+    java: 'import java.util.*;\n\npublic class Solution {\n    public static void main(String[] args) {\n        // Write Java here\n    }\n}'
+  });
+  const [selectedStarterLang, setSelectedStarterLang] = useState('javascript');
+  const [mcqDurationInput, setMcqDurationInput] = useState<string>('');
+  const [codingDurationInput, setCodingDurationInput] = useState<string>('');
+  const [codingMaxRunAttemptsInput, setCodingMaxRunAttemptsInput] = useState<string>('');
 
   // Communication Hub State
   const [selectedMsgJobId, setSelectedMsgJobId] = useState<string | null>(null);
@@ -60,15 +104,46 @@ export function RecruiterDashboard() {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessageText, setNewMessageText] = useState('');
   const [feedbackInput, setFeedbackInput] = useState('');
+  const [meetLinkInput, setMeetLinkInput] = useState('');
+  const [isMeetLinkPublished, setIsMeetLinkPublished] = useState(false);
   const [analytics, setAnalytics] = useState<any>(null);
   const [selectedApplicant, setSelectedApplicant] = useState<any>(null); // For viewing detailed candidate profiles
+
+  const selectedMsgJob = jobs.find(j => j.id === selectedMsgJobId);
+  const isSelectedMsgJobClosed = selectedMsgJob ? !selectedMsgJob.isOpen : false;
+
+  useEffect(() => {
+    if (selectedApplicant) {
+      const activeProgression = selectedApplicant.progressions?.find((p: any) => p.status === 'PENDING');
+      if (activeProgression) {
+        setMeetLinkInput(activeProgression.meetLink || '');
+        setIsMeetLinkPublished(activeProgression.isMeetLinkPublished || false);
+      } else {
+        setMeetLinkInput('');
+        setIsMeetLinkPublished(false);
+      }
+    } else {
+      setMeetLinkInput('');
+      setIsMeetLinkPublished(false);
+    }
+  }, [selectedApplicant]);
 
   useEffect(() => {
     if (user?.status === 'APPROVED') {
       loadJobs();
       loadAnalytics();
+      loadHistoryLogs();
     }
   }, [user]);
+
+  const loadHistoryLogs = async () => {
+    try {
+      const data = await JobService.getJobHistory();
+      setActivityLogs(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const loadJobs = async () => {
     try {
@@ -94,9 +169,199 @@ export function RecruiterDashboard() {
       setApplicants(data);
       setSelectedJobId(jobId);
       setSelectedApplicant(null); // Clear selected applicant details
+      
+      // Fetch rounds dynamically to guarantee they are always up to date on selection
+      const rounds = await RoundService.getRounds(jobId);
+      setJobs(prevJobs => prevJobs.map(j => j.id === jobId ? { ...j, rounds } : j));
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleManageMcqQuestions = async (round: any) => {
+    setActiveMcqRound(round);
+    setMcqDurationInput(round.mcqDuration ? String(round.mcqDuration) : '');
+    try {
+      const data = await RoundService.getMcqQuestions(round.id);
+      setMcqQuestions(data.map((q: any) => ({
+        id: q.id,
+        questionText: q.questionText,
+        imageBlob: q.imageBlob,
+        type: q.type,
+        options: Array.isArray(q.options) ? q.options : JSON.parse(q.options || "[]"),
+        correctAnswers: Array.isArray(q.correctAnswers) ? q.correctAnswers : JSON.parse(q.correctAnswers || "[]"),
+        marks: q.marks || 1,
+        duration: q.duration !== null && q.duration !== undefined ? String(q.duration) : ''
+      })));
+    } catch (e) {
+      console.error(e);
+      setMcqQuestions([]);
+    }
+  };
+
+  const handleSaveMcqQuestions = async () => {
+    if (!activeMcqRound) return;
+    try {
+      for (const q of mcqQuestions) {
+        if (!q.questionText.trim()) {
+          alert("All questions must have a question text.");
+          return;
+        }
+        if (q.options.length < 2) {
+          alert("All questions must have at least 2 options.");
+          return;
+        }
+        if (q.correctAnswers.length === 0) {
+          alert(`Please select at least one correct answer for the question: "${q.questionText}"`);
+          return;
+        }
+      }
+      
+      const overallDuration = mcqDurationInput.trim() ? parseInt(mcqDurationInput) : null;
+      await RoundService.saveMcqQuestions(activeMcqRound.id, mcqQuestions, overallDuration);
+      alert("MCQ questions saved successfully!");
+      setActiveMcqRound(null);
+      await loadJobs();
+      if (selectedJobId) {
+        await loadApplicants(selectedJobId);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Failed to save MCQ questions");
+    }
+  };
+
+  const handleManageCodingQuestion = async (round: any) => {
+    setActiveCodingRound(round);
+    setEditingQuestion(null);
+    setCodingDurationInput(round.codingDuration ? String(round.codingDuration) : '');
+    await refreshCodingQuestions(round.id);
+  };
+
+  const refreshCodingQuestions = async (roundId: string) => {
+    try {
+      const data = await RoundService.getCodingQuestion(roundId);
+      setCodingQuestions(Array.isArray(data) ? data : (data ? [data] : []));
+    } catch (e) {
+      console.error(e);
+      setCodingQuestions([]);
+    }
+  };
+
+  const handleStartAddQuestion = () => {
+    setEditingQuestion({ isNew: true });
+    setCodingTitle('');
+    setCodingDescription('');
+    setCodingConstraints('');
+    setCodingMarks('10');
+    setCodingMaxRunAttemptsInput('');
+    setCodingTestCases([]);
+    setCodingStarterCode({
+      javascript: 'function solve() {\n  // Write JavaScript here\n}',
+      python: 'def solve():\n    # Write Python here\n    pass',
+      typescript: 'function solve(): void {\n  // Write TypeScript here\n}',
+      cpp: '#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write C++ here\n    return 0;\n}',
+      java: 'import java.util.*;\n\npublic class Solution {\n    public static void main(String[] args) {\n        // Write Java here\n    }\n}'
+    });
+  };
+
+  const handleStartEditQuestion = (q: any) => {
+    setEditingQuestion(q);
+    setCodingTitle(q.title || '');
+    setCodingDescription(q.description || '');
+    setCodingConstraints(q.constraints || '');
+    setCodingMarks(q.marks ? String(q.marks) : '10');
+    setCodingMaxRunAttemptsInput(q.maxRunAttempts != null ? String(q.maxRunAttempts) : '');
+    setCodingTestCases(q.testCases || []);
+    if (q.starterCode) {
+      setCodingStarterCode(prev => ({
+        ...prev,
+        ...(typeof q.starterCode === 'string' ? JSON.parse(q.starterCode) : q.starterCode)
+      }));
+    }
+  };
+
+  const handleDeleteQuestion = async (questionId: string) => {
+    if (!activeCodingRound) return;
+    if (!confirm('Are you sure you want to delete this coding question?')) return;
+    try {
+      await RoundService.deleteCodingQuestion(activeCodingRound.id, questionId);
+      alert('Question deleted successfully!');
+      await refreshCodingQuestions(activeCodingRound.id);
+      await loadJobs();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to delete coding question');
+    }
+  };
+
+  const handleSaveCodingQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeCodingRound || !editingQuestion) return;
+    try {
+      await RoundService.saveCodingQuestion(activeCodingRound.id, {
+        id: editingQuestion.id,
+        title: codingTitle,
+        description: codingDescription,
+        constraints: codingConstraints,
+        starterCode: codingStarterCode,
+        testCases: codingTestCases,
+        marks: Number(codingMarks),
+        codingDuration: codingDurationInput.trim() ? Number(codingDurationInput) : null,
+        maxRunAttempts: codingMaxRunAttemptsInput.trim() ? Number(codingMaxRunAttemptsInput) : null
+      });
+      alert('Coding challenge saved successfully!');
+      setEditingQuestion(null);
+      await refreshCodingQuestions(activeCodingRound.id);
+      await loadJobs();
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error || 'Failed to save coding question';
+      const details = err.response?.data?.details;
+      alert(details ? `${errMsg}\nDetails: ${details}` : errMsg);
+    }
+  };
+
+  const handlePublishMcq = async (roundId: string) => {
+    try {
+      await RoundService.publishMcqTest(roundId);
+      alert("MCQ Test published to candidates successfully!");
+      await loadJobs();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to publish MCQ test");
+    }
+  };
+
+  const handlePublishCoding = async (roundId: string) => {
+    try {
+      await RoundService.publishCodingTest(roundId);
+      alert("Coding Round published to candidates successfully!");
+      await loadJobs();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to publish Coding round");
+    }
+  };
+
+  const handleReleaseMcqResults = async (roundId: string) => {
+    try {
+      await RoundService.releaseMcqResults(roundId);
+      alert("Test results released. Candidates can now view their scores!");
+      await loadJobs();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to release MCQ results");
+    }
+  };
+
+  const handleMcqImageUpload = (index: number, file: File) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const updated = [...mcqQuestions];
+      updated[index].imageBlob = reader.result as string;
+      setMcqQuestions(updated);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handlePostJob = async (e: React.FormEvent) => {
@@ -121,7 +386,7 @@ export function RecruiterDashboard() {
       setEditingJobId(null);
       loadJobs();
       loadAnalytics();
-      setNewJob({ title: '', description: '', requirements: '', location: '', salaryRange: '', jobType: 'Full-time', questions: [], rounds: [] });
+      setNewJob({ title: '', description: '', requirements: '', location: '', salaryRange: '', jobType: 'Full-time', questions: [], applyStartDate: '', applyEndDate: '', rounds: [] });
       setQuestionInput('');
     } catch (e: any) {
       alert(e.response?.data?.error || 'Failed to post job');
@@ -145,7 +410,13 @@ export function RecruiterDashboard() {
         salaryRange: jobToEdit.salaryRange || '',
         jobType: jobToEdit.jobType || 'Full-time',
         questions: Array.isArray(jobToEdit.questions) ? jobToEdit.questions : [],
-        rounds: jobRounds
+        applyStartDate: formatDatetimeLocal(jobToEdit.applyStartDate),
+        applyEndDate: formatDatetimeLocal(jobToEdit.applyEndDate),
+        rounds: jobRounds.map((r: any) => ({
+          ...r,
+          startDate: formatDatetimeLocal(r.startDate),
+          endDate: formatDatetimeLocal(r.endDate)
+        }))
       });
       setQuestionInput('');
       setEditingJobId(jobId);
@@ -159,7 +430,7 @@ export function RecruiterDashboard() {
       ...newJob,
       rounds: [
         ...newJob.rounds,
-        { title: '', type: 'TECHNICAL_INTERVIEW', format: 'ONLINE', description: '', instructions: '' }
+        { title: '', type: 'TECHNICAL_INTERVIEW', format: 'ONLINE', description: '', instructions: '', startDate: '', endDate: '' }
       ]
     });
   };
@@ -272,8 +543,27 @@ export function RecruiterDashboard() {
       await JobService.updateJob(jobId, { isOpen: !currentIsOpen });
       await loadJobs();
       await loadAnalytics();
+      await loadHistoryLogs();
     } catch (e: any) {
       alert(e.response?.data?.error || 'Failed to update job status');
+    }
+  };
+
+  const handleTriggerDeleteJob = (id: string, title: string) => {
+    setJobToDelete({ id, title });
+  };
+
+  const handleConfirmDeleteJob = async () => {
+    if (!jobToDelete) return;
+    try {
+      await JobService.deleteJob(jobToDelete.id);
+      setJobToDelete(null);
+      setSelectedJobId(null);
+      await loadJobs();
+      await loadAnalytics();
+      await loadHistoryLogs();
+    } catch (e: any) {
+      alert(e.response?.data?.error || 'Failed to delete job posting');
     }
   };
 
@@ -339,6 +629,15 @@ export function RecruiterDashboard() {
         >
           <MessageSquare className="h-4 w-4" /> Communication Hub
         </button>
+        <button 
+          onClick={() => {
+            setActiveTab('HISTORY');
+            loadHistoryLogs();
+          }}
+          className={`pb-4 px-6 font-bold flex items-center gap-2 transition-all ${activeTab === 'HISTORY' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-slate-500 hover:text-slate-900'}`}
+        >
+          <History className="h-4 w-4" /> Activity History
+        </button>
       </div>
 
       {activeTab === 'JOBS' && (
@@ -352,7 +651,7 @@ export function RecruiterDashboard() {
                 setSelectedJobId(null); 
                 setSelectedApplicant(null); 
                 setEditingJobId(null);
-                setNewJob({ title: '', description: '', requirements: '', location: '', salaryRange: '', jobType: 'Full-time', questions: [], rounds: [] });
+                setNewJob({ title: '', description: '', requirements: '', location: '', salaryRange: '', jobType: 'Full-time', questions: [], applyStartDate: '', applyEndDate: '', rounds: [] });
                 setQuestionInput('');
               }} className="bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-all">
                 + Post Job
@@ -395,6 +694,16 @@ export function RecruiterDashboard() {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Salary Range</label>
                       <input className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm" placeholder="e.g. $80k - $100k" value={newJob.salaryRange} onChange={e => setNewJob({...newJob, salaryRange: e.target.value})} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Apply Start Date (Optional)</label>
+                      <input type="datetime-local" className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm" value={newJob.applyStartDate} onChange={e => setNewJob({...newJob, applyStartDate: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Apply End Date (Optional)</label>
+                      <input type="datetime-local" className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm" value={newJob.applyEndDate} onChange={e => setNewJob({...newJob, applyEndDate: e.target.value})} />
                     </div>
                   </div>
                   <div>
@@ -522,6 +831,26 @@ export function RecruiterDashboard() {
                                 />
                               </div>
                             </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Start Date (Optional)</label>
+                                <input 
+                                  type="datetime-local"
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-slate-800 text-xs" 
+                                  value={round.startDate || ''} 
+                                  onChange={e => updateRound(i, 'startDate', e.target.value)} 
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">End Date (Optional)</label>
+                                <input 
+                                  type="datetime-local"
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-slate-800 text-xs" 
+                                  value={round.endDate || ''} 
+                                  onChange={e => updateRound(i, 'endDate', e.target.value)} 
+                                />
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -638,7 +967,7 @@ export function RecruiterDashboard() {
                 </div>
 
                   {/* Custom Interview Rounds Tracker */}
-                  {selectedApplicant.job.rounds && selectedApplicant.job.rounds.length > 0 && (
+                  {selectedApplicant.job.rounds && selectedApplicant.job.rounds.length > 0 && selectedApplicant.status !== 'APPLIED' && (
                     <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 mt-4">
                       <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-1.5">
                         <Layers className="h-4 w-4 text-purple-500" /> Recruitment Progress
@@ -673,6 +1002,52 @@ export function RecruiterDashboard() {
                                     Feedback: {progression.feedback}
                                   </p>
                                 )}
+                                {round.type === 'MCQ' && progression?.mcqResponse && (
+                                  <div className="text-[10px] mt-1.5 p-2 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between text-purple-750">
+                                    <span className="font-bold">MCQ Test Score:</span>
+                                    <span className="font-black bg-purple-100 px-2 py-0.5 rounded text-[10px]">
+                                      {progression.mcqResponse.score} / {progression.mcqResponse.totalPossibleMarks} Marks
+                                    </span>
+                                  </div>
+                                )}
+                                {round.type === 'CODING' && progression?.codingSubmissions && progression.codingSubmissions.length > 0 && (() => {
+                                  const totalScore = progression.codingSubmissions.reduce((sum: number, sub: any) => sum + (sub.score || 0), 0);
+                                  const totalMaxMarks = progression.codingSubmissions.reduce((sum: number, sub: any) => sum + (sub.question?.marks || 0), 0);
+                                  const totalPassed = progression.codingSubmissions.reduce((sum: number, sub: any) => sum + (sub.passedCasesCount || 0), 0);
+                                  const totalCases = progression.codingSubmissions.reduce((sum: number, sub: any) => sum + (sub.totalCasesCount || 0), 0);
+                                  return (
+                                    <div className="text-[10px] mt-1.5 p-2 bg-indigo-50 rounded-xl border border-indigo-100 flex flex-col gap-1 text-indigo-750">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-bold">Coding Test Score:</span>
+                                        <span className="font-black bg-indigo-100 px-2 py-0.5 rounded text-[10px]">
+                                          {totalScore} / {totalMaxMarks} Marks
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-between text-[9px] text-indigo-650 font-medium">
+                                        <span>Test Cases Passed:</span>
+                                        <span>{totalPassed} / {totalCases}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                                {['TECHNICAL_INTERVIEW', 'HR_INTERVIEW'].includes(round.type) && progression?.meetLink && (
+                                  <div className="text-[10px] mt-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200 flex flex-col gap-1 text-slate-700">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-bold shrink-0">Interview Link:</span>
+                                      <a href={progression.meetLink.startsWith('http') ? progression.meetLink : `https://${progression.meetLink}`} target="_blank" rel="noopener noreferrer" className="text-purple-650 hover:underline font-bold truncate text-[10px]">
+                                        {progression.meetLink}
+                                      </a>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[9px]">
+                                      <span>Status:</span>
+                                      {progression.isMeetLinkPublished ? (
+                                        <span className="text-emerald-600 font-bold bg-emerald-50 px-1 rounded border border-emerald-100">Published</span>
+                                      ) : (
+                                        <span className="text-amber-600 font-bold bg-amber-50 px-1 rounded border border-amber-100">Draft (Unpublished)</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                               <span className="text-[10px] font-bold uppercase tracking-wider self-center">
                                 {isCurrent ? <span className="text-purple-650 animate-pulse font-extrabold">In Progress</span> :
@@ -686,40 +1061,124 @@ export function RecruiterDashboard() {
                       </div>
 
                       {/* Progression Action Form */}
-                      {selectedApplicant.progressions?.some((p: any) => p.status === 'PENDING') && (
-                        <div className="mt-5 border-t border-slate-200 pt-4 space-y-3">
-                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Evaluation & Notes</label>
-                          <textarea
-                            rows={2}
-                            placeholder="Add evaluation feedback or instructions for this candidate..."
-                            value={feedbackInput}
-                            onChange={e => setFeedbackInput(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-850 text-sm"
-                          />
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleProgressCandidate(selectedApplicant.id, 'QUALIFIED')}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs py-2 flex-1"
-                            >
-                              Pass Candidate
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => handleProgressCandidate(selectedApplicant.id, 'REJECTED')}
-                              className="bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs py-2 flex-1"
-                            >
-                              Reject Candidate
-                            </Button>
+                      {selectedApplicant.progressions?.some((p: any) => p.status === 'PENDING') && (() => {
+                        const activeProgression = selectedApplicant.progressions.find((p: any) => p.status === 'PENDING');
+                        const activeRound = selectedApplicant.job.rounds?.find((r: any) => r.id === activeProgression?.roundId);
+                        const isLastRound = selectedApplicant.job.rounds && activeRound
+                          ? activeRound.order === selectedApplicant.job.rounds.length - 1
+                          : false;
+
+                        return (
+                          <div className="mt-5 border-t border-slate-200 pt-4 space-y-3">
+                            {['TECHNICAL_INTERVIEW', 'HR_INTERVIEW'].includes(activeRound?.type) && (
+                              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4.5 space-y-3 mb-4 text-left">
+                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                  <span>📹 Video Call / Interview Meeting Link</span>
+                                </label>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    placeholder="Paste Google Meet, Zoom, or Teams link..."
+                                    value={meetLinkInput}
+                                    onChange={e => setMeetLinkInput(e.target.value)}
+                                    className="flex-1 px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-xs bg-white font-medium shadow-sm"
+                                  />
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await RoundService.updateMeetLink(selectedApplicant.id, activeRound.id, {
+                                          meetLink: meetLinkInput,
+                                          isMeetLinkPublished
+                                        });
+                                        alert("Meeting link updated successfully!");
+                                        const data = await ApplicationService.getJobApplicants(selectedJobId!);
+                                        setApplicants(data);
+                                        const updatedApplicant = data.find((a: any) => a.id === selectedApplicant.id);
+                                        if (updatedApplicant) {
+                                          setSelectedApplicant(updatedApplicant);
+                                        }
+                                      } catch (err: any) {
+                                        alert(err.response?.data?.error || "Failed to update meeting link");
+                                      }
+                                    }}
+                                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-sm shrink-0 border-none"
+                                  >
+                                    Save Link
+                                  </button>
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <input
+                                    type="checkbox"
+                                    id="publish-meet-link"
+                                    checked={isMeetLinkPublished}
+                                    onChange={async (e) => {
+                                      const newVal = e.target.checked;
+                                      setIsMeetLinkPublished(newVal);
+                                      try {
+                                        await RoundService.updateMeetLink(selectedApplicant.id, activeRound.id, {
+                                          meetLink: meetLinkInput,
+                                          isMeetLinkPublished: newVal
+                                        });
+                                        alert(newVal ? "Meeting link published to student!" : "Meeting link unpublished.");
+                                        const data = await ApplicationService.getJobApplicants(selectedJobId!);
+                                        setApplicants(data);
+                                        const updatedApplicant = data.find((a: any) => a.id === selectedApplicant.id);
+                                        if (updatedApplicant) {
+                                          setSelectedApplicant(updatedApplicant);
+                                        }
+                                      } catch (err: any) {
+                                        alert(err.response?.data?.error || "Failed to update meeting link publish status");
+                                        setIsMeetLinkPublished(!newVal);
+                                      }
+                                    }}
+                                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500 h-3.5 w-3.5 cursor-pointer"
+                                  />
+                                  <label htmlFor="publish-meet-link" className="text-xs font-semibold text-slate-600 cursor-pointer select-none">
+                                    Publish link (make visible to candidate)
+                                  </label>
+                                </div>
+                              </div>
+                            )}
+
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Evaluation & Notes</label>
+                            <textarea
+                              rows={2}
+                              placeholder="Add evaluation feedback or instructions for this candidate..."
+                              value={feedbackInput}
+                              onChange={e => setFeedbackInput(e.target.value)}
+                              className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-850 text-sm"
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleProgressCandidate(selectedApplicant.id, 'QUALIFIED')}
+                                className={`font-bold rounded-xl text-xs py-2 flex-1 border-none ${
+                                  isLastRound 
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
+                                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                                }`}
+                              >
+                                {isLastRound ? 'Make Offer' : 'Shortlist Candidate'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleProgressCandidate(selectedApplicant.id, 'REJECTED')}
+                                className="bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs py-2 flex-1 border-none"
+                              >
+                                Reject Candidate
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   )}
 
                 {selectedApplicant.status !== 'OFFERED' && selectedApplicant.status !== 'ACCEPTED' && selectedApplicant.status !== 'DECLINED' && (!selectedApplicant.job.rounds || selectedApplicant.job.rounds.length === 0) && (
                   <div className="flex gap-2 border-t border-slate-100 pt-6">
-                    <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'SHORTLISTED')} className="bg-amber-50 text-amber-700 hover:bg-amber-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Shortlist</Button>
+                    {selectedApplicant.status === 'APPLIED' && (
+                      <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'SHORTLISTED')} className="bg-amber-50 text-amber-700 hover:bg-amber-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Shortlist</Button>
+                    )}
                     <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'OFFERED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Make Offer</Button>
                     <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'REJECTED')} className="bg-red-50 text-red-700 hover:bg-red-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Reject</Button>
                   </div>
@@ -735,6 +1194,171 @@ export function RecruiterDashboard() {
             ) : selectedJobId ? (
               // APPLICANTS LIST
               <div>
+                {selectedJob?.rounds && selectedJob.rounds.length > 0 && (
+                  <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 mb-6 space-y-4">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="h-4 w-4 text-purple-650" /> Interview Process & Test Configuration
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {selectedJob.rounds.map((round: any, idx: number) => {
+                        const isMcq = round.type === 'MCQ';
+                        return (
+                          <div key={round.id} className="bg-white p-4.5 rounded-2xl border border-slate-100 flex flex-col justify-between space-y-3 shadow-sm hover:shadow-md transition-all">
+                            <div>
+                              <div className="flex justify-between items-center">
+                                <h4 className="font-extrabold text-sm text-slate-900">{idx + 1}. {round.title}</h4>
+                                <span className="text-[10px] font-black uppercase bg-purple-50 text-purple-750 px-2 py-0.5 rounded border border-purple-100">
+                                  {round.type}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">{round.description || 'No description provided.'}</p>
+                            </div>
+                            
+                            {isMcq && (
+                              <div className="pt-3 border-t border-slate-100 flex flex-col gap-2 w-full">
+                                <div className="flex justify-between items-center gap-2">
+                                  <button
+                                    onClick={() => handleManageMcqQuestions(round)}
+                                    className="text-xs font-bold text-purple-650 hover:text-purple-700 flex items-center gap-1"
+                                  >
+                                    <FileText className="h-3.5 w-3.5" /> Setup Questions
+                                  </button>
+                                  
+                                  <div className="flex gap-1.5 items-center">
+                                    {!round.isMcqPublished ? (
+                                      <button
+                                        onClick={() => handlePublishMcq(round.id)}
+                                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] px-3 py-1.5 rounded-xl border-none transition-all shadow-sm"
+                                      >
+                                        Publish Test
+                                      </button>
+                                    ) : !round.isMcqResultReleased ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">
+                                          Published
+                                        </span>
+                                        <button
+                                          onClick={() => handleReleaseMcqResults(round.id)}
+                                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-3 py-1.5 rounded-xl border-none transition-all shadow-sm"
+                                        >
+                                          Release Results
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span className="text-[9px] font-bold text-blue-750 bg-blue-50 px-2 py-1 rounded-md border border-blue-150">
+                                        Results Released
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Auto-Shortlist Form */}
+                                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    placeholder="Number of candidates to shortlist..."
+                                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[10px] w-full outline-none focus:border-purple-600 font-medium"
+                                    id={`shortlist-count-${round.id}`}
+                                  />
+                                  <button
+                                    onClick={async () => {
+                                      const inputEl = document.getElementById(`shortlist-count-${round.id}`) as HTMLInputElement;
+                                      const count = parseInt(inputEl?.value || '0');
+                                      if (!count || count <= 0) {
+                                        alert("Please enter a valid number of candidates to shortlist.");
+                                        return;
+                                      }
+                                      if (confirm(`Are you sure you want to auto-shortlist the top ${count} candidates based on MCQ scores and reject the rest?`)) {
+                                        try {
+                                          const res = await RoundService.autoShortlistMcq(round.id, count);
+                                          alert(res.message);
+                                          await loadJobs();
+                                          if (selectedJobId) {
+                                            await loadApplicants(selectedJobId);
+                                          }
+                                        } catch (err: any) {
+                                          alert(err.response?.data?.error || "Failed to apply auto-shortlist");
+                                        }
+                                      }
+                                    }}
+                                    className="bg-purple-50 hover:bg-purple-100 text-purple-750 font-bold text-[10px] px-3 py-1.5 rounded-lg transition-all whitespace-nowrap border border-purple-200 shadow-sm"
+                                  >
+                                    Auto-Shortlist
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {round.type === 'CODING' && (
+                              <div className="pt-3 border-t border-slate-100 flex flex-col gap-2 w-full">
+                                <div className="flex justify-between items-center gap-2">
+                                  <button
+                                    onClick={() => handleManageCodingQuestion(round)}
+                                    className="text-xs font-bold text-purple-650 hover:text-purple-700 flex items-center gap-1"
+                                  >
+                                    <FileText className="h-3.5 w-3.5" /> Setup Coding Challenge
+                                  </button>
+                                  
+                                  <div className="flex gap-1.5 items-center">
+                                    {!round.isCodingPublished ? (
+                                      <button
+                                        onClick={() => handlePublishCoding(round.id)}
+                                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] px-3 py-1.5 rounded-xl border-none transition-all shadow-sm"
+                                      >
+                                        Publish Test
+                                      </button>
+                                    ) : (
+                                      <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">
+                                        Published
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Auto-Shortlist Form */}
+                                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    placeholder="Number of candidates to shortlist..."
+                                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[10px] w-full outline-none focus:border-purple-600 font-medium"
+                                    id={`shortlist-count-${round.id}`}
+                                  />
+                                  <button
+                                    onClick={async () => {
+                                      const inputEl = document.getElementById(`shortlist-count-${round.id}`) as HTMLInputElement;
+                                      const count = parseInt(inputEl?.value || '0');
+                                      if (!count || count <= 0) {
+                                        alert("Please enter a valid number of candidates to shortlist.");
+                                        return;
+                                      }
+                                      if (confirm(`Are you sure you want to auto-shortlist the top ${count} candidates based on Coding test scores and reject the rest?`)) {
+                                        try {
+                                          const res = await RoundService.autoShortlistMcq(round.id, count);
+                                          alert(res.message);
+                                          await loadJobs();
+                                          if (selectedJobId) {
+                                            await loadApplicants(selectedJobId);
+                                          }
+                                        } catch (err: any) {
+                                          alert(err.response?.data?.error || "Failed to apply auto-shortlist");
+                                        }
+                                      }
+                                    }}
+                                    className="bg-purple-50 hover:bg-purple-100 text-purple-750 font-bold text-[10px] px-3 py-1.5 rounded-lg transition-all whitespace-nowrap border border-purple-200 shadow-sm"
+                                  >
+                                    Auto-Shortlist
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-black text-slate-900">Applicants ({applicants.length})</h2>
                   <div className="flex gap-2">
@@ -756,54 +1380,197 @@ export function RecruiterDashboard() {
                     >
                       Edit Job Posting
                     </Button>
+                    <Button 
+                      onClick={() => handleTriggerDeleteJob(selectedJob.id, selectedJob.title)} 
+                      className="bg-red-50 hover:bg-red-100 text-red-655 font-bold rounded-xl py-2 px-4 text-xs transition-all flex items-center gap-1.5 border-none"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Delete Job
+                    </Button>
                   </div>
                 </div>
                 <div className="space-y-4">
-                  {applicants.map(app => (
-                    <div key={app.id} className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <h3 className="font-bold text-lg text-slate-900">{app.student.user.fullName}</h3>
-                          <p className="text-xs text-slate-500 mt-1">{app.student.college || 'No college listed'} • {app.student.branch || 'No branch listed'}</p>
-                          {app.student.skills && (
-                            <div className="flex flex-wrap gap-1 mt-2.5">
-                              {app.student.skills.split(',').slice(0, 3).map((skill: string, index: number) => (
-                                <span key={index} className="text-[10px] bg-slate-100 font-bold px-2 py-0.5 rounded text-slate-600">{skill.trim()}</span>
-                              ))}
-                              {app.student.skills.split(',').length > 3 && (
-                                <span className="text-[10px] font-bold text-slate-400 mt-0.5 ml-1">+{app.student.skills.split(',').length - 3} more</span>
-                              )}
+                  {(() => {
+                    const getMcqScore = (app: any) => {
+                      const mcqProg = app.progressions?.find((p: any) => p.mcqResponse);
+                      return mcqProg?.mcqResponse?.score ?? -1;
+                    };
+
+                    const activeCandidates = applicants.filter(app => app.status !== 'REJECTED' && app.status !== 'DECLINED');
+                    const rejectedCandidates = applicants.filter(app => app.status === 'REJECTED' || app.status === 'DECLINED');
+
+                    // Sort active candidates based on selected MCQ sort order
+                    if (mcqSortOrder === 'HIGH_TO_LOW') {
+                      activeCandidates.sort((a, b) => getMcqScore(b) - getMcqScore(a));
+                    } else if (mcqSortOrder === 'LOW_TO_HIGH') {
+                      activeCandidates.sort((a, b) => getMcqScore(a) - getMcqScore(b));
+                    }
+
+                    const renderCandidateCard = (app: any) => (
+                      <div key={app.id} className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h3 className="font-bold text-lg text-slate-900">{app.student.user.fullName}</h3>
+                            <p className="text-xs text-slate-500 mt-1">{app.student.college || 'No college listed'} • {app.student.branch || 'No branch listed'}</p>
+                            {app.student.skills && (
+                              <div className="flex flex-wrap gap-1 mt-2.5">
+                                {app.student.skills.split(',').slice(0, 3).map((skill: string, index: number) => (
+                                  <span key={index} className="text-[10px] bg-slate-100 font-bold px-2 py-0.5 rounded text-slate-600">{skill.trim()}</span>
+                                ))}
+                                {app.student.skills.split(',').length > 3 && (
+                                  <span className="text-[10px] font-bold text-slate-400 mt-0.5 ml-1">+{app.student.skills.split(',').length - 3} more</span>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {(() => {
+                                const mcqProg = app.progressions?.find((p: any) => p.mcqResponse);
+                                if (mcqProg?.mcqResponse) {
+                                  return (
+                                    <div className="text-[10px] font-bold text-purple-750 bg-purple-50/60 border border-purple-100 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5">
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-purple-650" />
+                                      <span>MCQ Score: <span className="font-extrabold">{mcqProg.mcqResponse.score} / {mcqProg.mcqResponse.totalPossibleMarks}</span> Marks</span>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
+
+                              {(() => {
+                                const codingProg = app.progressions?.find((p: any) => p.codingSubmissions && p.codingSubmissions.length > 0);
+                                if (codingProg?.codingSubmissions) {
+                                  const totalScore = codingProg.codingSubmissions.reduce((sum: number, sub: any) => sum + (sub.score || 0), 0);
+                                  const totalMaxMarks = codingProg.codingSubmissions.reduce((sum: number, sub: any) => sum + (sub.question?.marks || 0), 0);
+                                  const totalPassed = codingProg.codingSubmissions.reduce((sum: number, sub: any) => sum + (sub.passedCasesCount || 0), 0);
+                                  const totalCases = codingProg.codingSubmissions.reduce((sum: number, sub: any) => sum + (sub.totalCasesCount || 0), 0);
+
+                                  return (
+                                    <div className="text-[10px] font-bold text-indigo-750 bg-indigo-50/60 border border-indigo-100 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5">
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-indigo-650" />
+                                      <span>Coding Score: <span className="font-extrabold">{totalScore} / {totalMaxMarks}</span> Marks <span className="text-slate-500 font-medium">({totalPassed}/{totalCases} cases)</span></span>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </div>
-                          )}
+                          </div>
+                          <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase border ${
+                            app.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                            app.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                            app.status === 'REJECTED' ? 'bg-red-50 text-red-700 border-red-100' :
+                            app.status === 'OFFERED' ? 'bg-indigo-50 text-indigo-700 border-indigo-100 animate-pulse' :
+                            app.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                            app.status === 'DECLINED' ? 'bg-red-50 text-red-600 border-red-100' :
+                            'bg-slate-50 text-slate-600 border-slate-150'
+                          }`}>{app.status === 'OFFERED' ? 'OFFERED' : app.status === 'ACCEPTED' ? 'HIRED' : app.status}</span>
                         </div>
-                        <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase border ${
-                          app.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                          app.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                          app.status === 'REJECTED' ? 'bg-red-50 text-red-700 border-red-100' :
-                          app.status === 'OFFERED' ? 'bg-indigo-50 text-indigo-700 border-indigo-100 animate-pulse' :
-                          app.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                          app.status === 'DECLINED' ? 'bg-red-50 text-red-600 border-red-100' :
-                          'bg-slate-50 text-slate-600 border-slate-150'
-                        }`}>{app.status === 'OFFERED' ? 'OFFERED' : app.status === 'ACCEPTED' ? 'HIRED' : app.status}</span>
+                        
+                        <div className="flex gap-2 items-center justify-between border-t border-slate-100 pt-4 mt-2">
+                          <button 
+                            onClick={() => setSelectedApplicant(app)}
+                            className="text-xs font-bold text-purple-650 hover:text-purple-750 flex items-center gap-1"
+                          >
+                            <User className="h-3.5 w-3.5" /> View Profile & Details
+                          </button>
+                          {app.status !== 'OFFERED' && app.status !== 'ACCEPTED' && app.status !== 'DECLINED' && (() => {
+                            const hasRounds = app.job?.rounds && app.job.rounds.length > 0;
+                            
+                            if (app.status === 'APPLIED') {
+                              return (
+                                <div className="flex gap-1.5">
+                                  <Button 
+                                    size="sm" 
+                                    onClick={() => updateStatus(app.id, 'SHORTLISTED')} 
+                                    className={`${hasRounds ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'} border-none font-bold text-xs`}
+                                  >
+                                    {hasRounds ? 'Shortlist (Start Rounds)' : 'Shortlist'}
+                                  </Button>
+                                  {!hasRounds && (
+                                    <Button 
+                                      size="sm" 
+                                      onClick={() => updateStatus(app.id, 'OFFERED')} 
+                                      className="bg-green-50 text-green-700 hover:bg-green-100 border-none font-bold text-xs"
+                                    >
+                                      Make Offer
+                                    </Button>
+                                  )}
+                                </div>
+                              );
+                            }
+                            
+                            if (app.status === 'SHORTLISTED') {
+                              if (hasRounds) {
+                                const activeProgression = app.progressions?.find((p: any) => p.status === 'PENDING');
+                                const activeRound = app.job?.rounds?.find((r: any) => r.id === activeProgression?.roundId);
+                                return (
+                                  <span className="text-[10px] font-bold text-purple-750 bg-purple-50 border border-purple-100 px-2.5 py-1.5 rounded-lg">
+                                    {activeRound 
+                                      ? `Rd ${activeRound.order + 1}: ${activeRound.title}`
+                                      : 'Rounds In Progress'
+                                    }
+                                  </span>
+                                );
+                              } else {
+                                return (
+                                  <div className="flex gap-1.5">
+                                    <Button 
+                                      size="sm" 
+                                      onClick={() => updateStatus(app.id, 'OFFERED')} 
+                                      className="bg-green-50 text-green-700 hover:bg-green-100 border-none font-bold text-xs"
+                                    >
+                                      Make Offer
+                                    </Button>
+                                  </div>
+                                );
+                              }
+                            }
+                            
+                            return null;
+                          })()}
+                        </div>
                       </div>
-                      
-                      <div className="flex gap-2 items-center justify-between border-t border-slate-100 pt-4 mt-2">
-                        <button 
-                          onClick={() => setSelectedApplicant(app)}
-                          className="text-xs font-bold text-purple-600 hover:text-purple-700 flex items-center gap-1"
-                        >
-                          <User className="h-3.5 w-3.5" /> View Profile & Details
-                        </button>
-                        {app.status !== 'OFFERED' && app.status !== 'ACCEPTED' && app.status !== 'DECLINED' && (
-                          <div className="flex gap-1.5">
-                            <Button size="sm" onClick={() => updateStatus(app.id, 'SHORTLISTED')} className="bg-amber-50 text-amber-700 hover:bg-amber-100 border-none font-bold text-xs">Shortlist</Button>
-                            <Button size="sm" onClick={() => updateStatus(app.id, 'OFFERED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none font-bold text-xs">Make Offer</Button>
+                    );
+
+                    return (
+                      <div className="space-y-8">
+                        {/* Active / Shortlisted Candidates */}
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-center bg-slate-50/70 p-4.5 rounded-2xl border border-slate-100">
+                            <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider">Active & Shortlisted ({activeCandidates.length})</h3>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-slate-400">Sort MCQ:</span>
+                              <select
+                                value={mcqSortOrder}
+                                onChange={e => setMcqSortOrder(e.target.value as any)}
+                                className="px-2.5 py-1.5 rounded-xl border border-slate-250 text-[10px] bg-white font-bold outline-none focus:border-purple-650 text-slate-700 shadow-sm"
+                              >
+                                <option value="DEFAULT">Default (Date Applied)</option>
+                                <option value="HIGH_TO_LOW">Score: High to Low</option>
+                                <option value="LOW_TO_HIGH">Score: Low to High</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="space-y-4">
+                            {activeCandidates.map(renderCandidateCard)}
+                            {activeCandidates.length === 0 && (
+                              <p className="text-slate-400 text-xs text-center py-12 bg-white rounded-2xl border border-slate-100">No active applicants currently.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Rejected & Declined Candidates (Let them be down) */}
+                        {rejectedCandidates.length > 0 && (
+                          <div className="space-y-4 pt-6 border-t border-slate-100">
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Rejected & Declined ({rejectedCandidates.length})</h3>
+                            <div className="space-y-4 opacity-75">
+                              {rejectedCandidates.map(renderCandidateCard)}
+                            </div>
                           </div>
                         )}
                       </div>
-                    </div>
-                  ))}
-                  {applicants.length === 0 && <p className="text-slate-500 py-12 text-center">No applicants yet for this job posting.</p>}
+                    );
+                  })()}
                 </div>
               </div>
             ) : (
@@ -1011,6 +1778,14 @@ export function RecruiterDashboard() {
                         : 'General Announcements'
                       }
                     </h3>
+                    {isSelectedMsgJobClosed && (
+                      <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 text-amber-800 text-xs">
+                        <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold">Recruiting on Hold:</span> Communication for this job is currently paused. Resume recruiting to broadcast new announcements.
+                        </div>
+                      </div>
+                    )}
                     <div className="space-y-3">
                       {messages.map((msg: any) => (
                         <div key={msg.id} className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-1">
@@ -1030,14 +1805,16 @@ export function RecruiterDashboard() {
                   <form onSubmit={handleSendAnnouncement} className="border-t border-slate-100 pt-4 flex gap-2">
                     <input
                       type="text"
-                      placeholder="Write an announcement to candidates..."
+                      placeholder={isSelectedMsgJobClosed ? "Communication is paused while recruiting is on hold." : "Write an announcement to candidates..."}
                       value={newMessageText}
                       onChange={e => setNewMessageText(e.target.value)}
-                      className="flex-1 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm"
+                      disabled={isSelectedMsgJobClosed}
+                      className={`flex-1 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm ${isSelectedMsgJobClosed ? 'bg-slate-50 text-slate-400 cursor-not-allowed border-slate-100' : ''}`}
                     />
                     <button
                       type="submit"
-                      className="p-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-all shadow-sm"
+                      disabled={isSelectedMsgJobClosed}
+                      className={`p-3 text-white rounded-xl transition-all shadow-sm ${isSelectedMsgJobClosed ? 'bg-slate-300 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`}
                     >
                       <Send className="h-4 w-4" />
                     </button>
@@ -1050,6 +1827,708 @@ export function RecruiterDashboard() {
                 <p className="font-bold text-slate-500">No Job Selected</p>
                 <p className="text-xs text-slate-400 mt-1">Please select a job from the left panel to load communication channels.</p>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'HISTORY' && (
+        <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-6">
+          <div>
+            <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+              <History className="h-5 w-5 text-purple-600" /> Job Activity Log History
+            </h2>
+            <p className="text-slate-500 text-xs mt-1">Track all lifecycle changes to your job postings including postings, updates, pauses, resumes, and deletions.</p>
+          </div>
+
+          <div className="relative border-l-2 border-slate-100 pl-6 ml-4 space-y-8">
+            {activityLogs.map((log) => {
+              let badgeColor = "bg-slate-100 text-slate-700 border-slate-200";
+              let dotColor = "bg-slate-300";
+              
+              if (log.action === "POSTED") {
+                badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-250";
+                dotColor = "bg-emerald-500 ring-4 ring-emerald-100";
+              } else if (log.action === "EDITED") {
+                badgeColor = "bg-blue-50 text-blue-700 border-blue-200";
+                dotColor = "bg-blue-500 ring-4 ring-blue-100";
+              } else if (log.action === "PAUSED") {
+                badgeColor = "bg-amber-50 text-amber-750 border-amber-200";
+                dotColor = "bg-amber-500 ring-4 ring-amber-100";
+              } else if (log.action === "RESUMED") {
+                badgeColor = "bg-purple-50 text-purple-750 border-purple-200";
+                dotColor = "bg-purple-500 ring-4 ring-purple-100";
+              } else if (log.action === "DELETED") {
+                badgeColor = "bg-red-50 text-red-700 border-red-200";
+                dotColor = "bg-red-500 ring-4 ring-red-100";
+              }
+
+              return (
+                <div key={log.id} className="relative space-y-1">
+                  {/* Timeline Dot */}
+                  <span className={`absolute -left-[31px] top-1.5 h-3 w-3 rounded-full ${dotColor}`} />
+                  
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className={`px-2.5 py-0.5 rounded-full font-bold border text-[10px] ${badgeColor}`}>
+                      {log.action}
+                    </span>
+                    <span className="font-extrabold text-slate-800">{log.jobTitle}</span>
+                    <span className="text-slate-400 font-medium">• {new Date(log.timestamp).toLocaleString()}</span>
+                  </div>
+                  {log.details && (
+                    <p className="text-xs text-slate-500 font-semibold leading-relaxed pl-1">{log.details}</p>
+                  )}
+                </div>
+              );
+            })}
+
+            {activityLogs.length === 0 && (
+              <div className="text-center py-12 text-slate-450">
+                <History className="h-12 w-12 mx-auto mb-3 opacity-20 text-slate-650" />
+                <p className="font-bold text-slate-500 text-sm">No Activity Found</p>
+                <p className="text-xs text-slate-400 mt-1">Lifecycle events will show here as you manage job postings.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* DELETE CONFIRMATION MODAL */}
+      {jobToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-xl border border-slate-100 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-3 bg-red-50 rounded-2xl w-fit">
+              <Trash2 className="h-6 w-6 text-red-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-900">Delete Job Posting?</h3>
+              <p className="text-slate-550 text-xs mt-1 leading-relaxed">
+                Are you sure you want to delete <span className="font-extrabold text-slate-800">"{jobToDelete.title}"</span>? This will permanently delete the posting, its custom interview rounds, round announcements, and all candidate applications. This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button 
+                onClick={() => setJobToDelete(null)} 
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl px-4 py-2.5 text-xs border-none"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleConfirmDeleteJob} 
+                className="bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl px-4 py-2.5 text-xs border-none"
+              >
+                Yes, Delete Posting
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MCQ QUESTIONS CONFIGURATION MODAL */}
+      {activeMcqRound && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-4xl w-full shadow-2xl border border-slate-100 flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center pb-4 border-b border-slate-150">
+              <div>
+                <h3 className="text-lg font-black text-slate-950">Setup MCQ Questions</h3>
+                <p className="text-slate-550 text-xs mt-0.5">Configure questions for round: <span className="font-extrabold text-slate-700">"{activeMcqRound.title}"</span></p>
+              </div>
+              <button 
+                onClick={() => setActiveMcqRound(null)} 
+                className="p-1.5 hover:bg-slate-100 rounded-xl transition-all text-slate-400 hover:text-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Content */}
+            <div className="flex-1 overflow-y-auto py-6 space-y-6 pr-2">
+              
+              {/* Overall test duration */}
+              <div className="p-4 bg-purple-50/50 border border-purple-100 rounded-2xl flex flex-col md:flex-row gap-3 items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-black text-purple-750 uppercase">Overall Test Duration (Optional)</h4>
+                  <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Define a maximum time limit for the entire test. Leave blank for unlimited time.</p>
+                </div>
+                <div className="flex items-center gap-1.5 w-full md:w-fit">
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 30"
+                    value={mcqDurationInput}
+                    onChange={e => setMcqDurationInput(e.target.value)}
+                    className="px-3 py-2 rounded-xl border border-slate-200 text-xs w-28 text-center outline-none focus:border-purple-650 font-bold bg-white"
+                  />
+                  <span className="text-xs font-bold text-slate-500">Minutes</span>
+                </div>
+              </div>
+
+              {mcqQuestions.map((q, qIdx) => (
+                <div key={qIdx} className="p-5 bg-slate-50 rounded-2xl border border-slate-200/60 space-y-4 relative">
+                  {/* Remove Question Button */}
+                  <button 
+                    onClick={() => {
+                      const updated = mcqQuestions.filter((_, idx) => idx !== qIdx);
+                      setMcqQuestions(updated);
+                    }}
+                    className="absolute top-4 right-4 text-red-500 hover:text-red-700 transition-all p-1 hover:bg-red-50 rounded-lg"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Question Text */}
+                    <div className="md:col-span-2 space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Question {qIdx + 1}</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Write question here..."
+                          value={q.questionText}
+                          onChange={e => {
+                            const updated = [...mcqQuestions];
+                            updated[qIdx].questionText = e.target.value;
+                            setMcqQuestions(updated);
+                          }}
+                          className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm bg-white"
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-3">
+                        {/* Type: Single or Multiple Choice */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Choice Type</label>
+                          <select
+                            value={q.type}
+                            onChange={e => {
+                              const updated = [...mcqQuestions];
+                              updated[qIdx].type = e.target.value;
+                              updated[qIdx].correctAnswers = [];
+                              setMcqQuestions(updated);
+                            }}
+                            className="w-full px-2.5 py-2 border border-slate-200 rounded-xl outline-none text-slate-800 text-xs bg-white"
+                          >
+                            <option value="SINGLE">Single Choice (Radio)</option>
+                            <option value="MULTIPLE">Multiple Choice (Checkboxes)</option>
+                          </select>
+                        </div>
+                        {/* Marks */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Marks / Weight</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={q.marks}
+                            onChange={e => {
+                              const updated = [...mcqQuestions];
+                              updated[qIdx].marks = Math.max(1, Number(e.target.value));
+                              setMcqQuestions(updated);
+                            }}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-xl outline-none text-slate-850 text-xs bg-white"
+                          />
+                        </div>
+                        {/* Time limit (optional) */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Time Limit (Secs)</label>
+                          <input
+                            type="number"
+                            min={5}
+                            placeholder="Optional"
+                            value={q.duration || ''}
+                            onChange={e => {
+                              const updated = [...mcqQuestions];
+                              updated[qIdx].duration = e.target.value;
+                              setMcqQuestions(updated);
+                            }}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-xl outline-none text-slate-850 text-xs bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Image Upload Option */}
+                      <div className="space-y-2">
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase">Question Image (Optional)</label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={e => {
+                              const file = e.target.files?.[0];
+                              if (file) handleMcqImageUpload(qIdx, file);
+                            }}
+                            className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                          />
+                          {q.imageBlob && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = [...mcqQuestions];
+                                updated[qIdx].imageBlob = null;
+                                setMcqQuestions(updated);
+                              }}
+                              className="text-[10px] font-bold text-red-500 hover:text-red-700"
+                            >
+                              Remove Image
+                            </button>
+                          )}
+                        </div>
+                        {q.imageBlob && (
+                          <div className="relative w-fit border border-slate-250 rounded-xl overflow-hidden mt-1.5">
+                            <img src={q.imageBlob} className="max-h-24 object-cover" alt="Question Preview" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Options / Choices Setup */}
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Choices & Correct Answer</label>
+                      <div className="space-y-1.5">
+                        {q.options.map((opt: string, oIdx: number) => {
+                          const isCorrect = q.correctAnswers.includes(oIdx);
+                          return (
+                            <div key={oIdx} className="flex items-center gap-2">
+                              <input
+                                type={q.type === 'SINGLE' ? 'radio' : 'checkbox'}
+                                name={`correct-${qIdx}`}
+                                checked={isCorrect}
+                                onChange={() => {
+                                  const updated = [...mcqQuestions];
+                                  if (q.type === 'SINGLE') {
+                                    updated[qIdx].correctAnswers = [oIdx];
+                                  } else {
+                                    if (isCorrect) {
+                                      updated[qIdx].correctAnswers = q.correctAnswers.filter((idx: number) => idx !== oIdx);
+                                    } else {
+                                      updated[qIdx].correctAnswers = [...q.correctAnswers, oIdx];
+                                    }
+                                  }
+                                  setMcqQuestions(updated);
+                                }}
+                                className="h-3.5 w-3.5 text-purple-600 focus:ring-purple-500 border-slate-300 rounded"
+                              />
+                              <input
+                                type="text"
+                                placeholder={`Option ${oIdx + 1}`}
+                                value={opt}
+                                onChange={e => {
+                                  const updated = [...mcqQuestions];
+                                  updated[qIdx].options[oIdx] = e.target.value;
+                                  setMcqQuestions(updated);
+                                }}
+                                className="flex-1 px-3 py-1.5 border border-slate-200 rounded-xl text-xs text-slate-700 bg-white"
+                              />
+                              {q.options.length > 2 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...mcqQuestions];
+                                    updated[qIdx].options = q.options.filter((_: any, idx: number) => idx !== oIdx);
+                                    updated[qIdx].correctAnswers = q.correctAnswers
+                                      .map((idx: number) => idx < oIdx ? idx : idx - 1)
+                                      .filter((idx: number) => idx >= 0 && idx < updated[qIdx].options.length);
+                                    setMcqQuestions(updated);
+                                  }}
+                                  className="text-slate-400 hover:text-red-500"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {q.options.length < 5 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...mcqQuestions];
+                            updated[qIdx].options.push('');
+                            setMcqQuestions(updated);
+                          }}
+                          className="text-xs font-bold text-purple-650 hover:text-purple-750 flex items-center gap-1 mt-1 pl-1"
+                        >
+                          <Plus className="h-3 w-3" /> Add Choice
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMcqQuestions([...mcqQuestions, {
+                    questionText: '',
+                    imageBlob: null,
+                    type: 'SINGLE',
+                    options: ['', ''],
+                    correctAnswers: [],
+                    marks: 1
+                  }]);
+                }}
+                className="w-full py-4 border-2 border-dashed border-slate-200 hover:border-slate-300 rounded-2xl text-slate-500 hover:text-slate-700 text-sm font-bold transition-all flex items-center justify-center gap-2 bg-slate-50/20"
+              >
+                <Plus className="h-4 w-4" /> Add Question
+              </button>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex gap-2 justify-end pt-4 border-t border-slate-150">
+              <Button 
+                onClick={() => setActiveMcqRound(null)} 
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl px-5 py-2.5 text-xs border-none"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSaveMcqQuestions} 
+                className="bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl px-5 py-2.5 text-xs border-none"
+              >
+                Save Questions
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CODING QUESTION CONFIGURATION MODAL */}
+      {/* CODING QUESTION CONFIGURATION MODAL */}
+      {activeCodingRound && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-4xl w-full shadow-2xl border border-slate-100 flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+            {!editingQuestion ? (
+              <>
+                {/* List View */}
+                <div className="flex justify-between items-center pb-4 border-b border-slate-150">
+                  <div>
+                    <h3 className="text-lg font-black text-slate-950">Setup Coding Challenge Questions</h3>
+                    <p className="text-slate-550 text-xs mt-0.5">Manage questions for round: <span className="font-extrabold text-slate-700">"{activeCodingRound.title}"</span></p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setActiveCodingRound(null)} 
+                    className="p-1.5 hover:bg-slate-100 rounded-xl transition-all text-slate-400 hover:text-slate-700"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto py-6 space-y-4 pr-2">
+                  {/* Overall test duration */}
+                  <div className="p-4 bg-purple-50/50 border border-purple-100 rounded-2xl flex flex-col md:flex-row gap-3 items-center justify-between">
+                    <div className="text-left">
+                      <h4 className="text-xs font-black text-purple-750 uppercase">Overall Test Duration (Optional)</h4>
+                      <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Define a maximum time limit for the entire test. Leave blank for unlimited time.</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 w-full md:w-fit">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="e.g. 45"
+                        value={codingDurationInput}
+                        onChange={e => setCodingDurationInput(e.target.value)}
+                        className="px-3 py-2 rounded-xl border border-slate-200 text-xs w-28 text-center outline-none focus:border-purple-600 font-bold bg-white text-slate-800"
+                      />
+                      <span className="text-xs font-bold text-slate-500">Minutes</span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await RoundService.saveCodingQuestion(activeCodingRound.id, {
+                              codingDuration: codingDurationInput.trim() ? Number(codingDurationInput) : null
+                            });
+                            alert('Coding duration updated successfully!');
+                            await loadJobs();
+                          } catch (err) {
+                            console.error(err);
+                            alert('Failed to update coding duration');
+                          }
+                        }}
+                        className="ml-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition-all"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Configured Questions ({codingQuestions.length})</span>
+                    <button
+                      type="button"
+                      onClick={handleStartAddQuestion}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+                    >
+                      <Plus className="h-4 w-4" /> Add Question
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {codingQuestions.map((q, qIdx) => (
+                      <div key={q.id || qIdx} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex justify-between items-center hover:bg-slate-100/50 transition-all">
+                        <div className="text-left">
+                          <h4 className="font-bold text-slate-800 text-sm">{q.title}</h4>
+                          <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                            <span>Marks: <strong className="text-slate-750 font-bold">{q.marks}</strong></span>
+                            <span>•</span>
+                            <span>Test Cases: <strong className="text-slate-750 font-bold">{q.testCases?.length || 0}</strong></span>
+                            {q.maxRunAttempts != null && (
+                              <>
+                                <span>•</span>
+                                <span className="text-amber-600 font-bold">Max Runs: {q.maxRunAttempts}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditQuestion(q)}
+                            className="p-2 hover:bg-white text-slate-600 hover:text-purple-600 rounded-xl border border-transparent hover:border-slate-200 shadow-sm transition-all"
+                            title="Edit Question"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteQuestion(q.id)}
+                            className="p-2 hover:bg-white text-red-500 hover:text-red-700 rounded-xl border border-transparent hover:border-slate-200 shadow-sm transition-all"
+                            title="Delete Question"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {codingQuestions.length === 0 && (
+                      <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50">
+                        <p className="text-slate-450 text-sm font-medium italic">No questions added yet. Click "+ Add Question" to get started.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-4 border-t border-slate-150">
+                  <Button 
+                    onClick={() => setActiveCodingRound(null)} 
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl px-5 py-2.5 text-xs border-none"
+                  >
+                    Close
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Form View (Edit/New) */}
+                <div className="flex justify-between items-center pb-4 border-b border-slate-150">
+                  <div>
+                    <h3 className="text-lg font-black text-slate-950">
+                      {editingQuestion.isNew ? 'Create Coding Question' : 'Edit Coding Question'}
+                    </h3>
+                    <p className="text-slate-550 text-xs mt-0.5">Round: <span className="font-extrabold text-slate-700">"{activeCodingRound.title}"</span></p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setEditingQuestion(null)} 
+                    className="p-1.5 hover:bg-slate-100 rounded-xl transition-all text-slate-400 hover:text-slate-700"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveCodingQuestion} className="flex-1 overflow-y-auto py-6 space-y-4 pr-2 text-left">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Challenge Title</label>
+                    <input 
+                      required
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm font-semibold" 
+                      placeholder="e.g. Reverse a Linked List" 
+                      value={codingTitle} 
+                      onChange={e => setCodingTitle(e.target.value)} 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Max Marks</label>
+                      <input 
+                        type="number"
+                        required
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm font-semibold" 
+                        value={codingMarks} 
+                        onChange={e => setCodingMarks(e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                        Max Run Attempts
+                        <span className="ml-1 text-slate-400 font-normal normal-case">(Optional)</span>
+                      </label>
+                      <input 
+                        type="number"
+                        min="1"
+                        placeholder="Unlimited"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-amber-500 text-slate-800 text-sm font-semibold" 
+                        value={codingMaxRunAttemptsInput} 
+                        onChange={e => setCodingMaxRunAttemptsInput(e.target.value)} 
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1 font-medium">Limit how many times candidates can run their code before submitting.</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Constraints (Optional)</label>
+                      <input 
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm font-semibold" 
+                        placeholder="e.g. O(N), Space O(1)" 
+                        value={codingConstraints} 
+                        onChange={e => setCodingConstraints(e.target.value)} 
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Problem Description</label>
+                    <textarea 
+                      required
+                      rows={4}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm font-medium" 
+                      placeholder="Describe the problem, input format, and output format..." 
+                      value={codingDescription} 
+                      onChange={e => setCodingDescription(e.target.value)} 
+                    />
+                  </div>
+
+                  {/* Starter Code Editor Section */}
+                  <div className="border border-slate-150 rounded-2xl p-4 bg-slate-50/50">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="text-xs font-black text-slate-650 uppercase">Configure Starter Templates</h4>
+                      <select
+                        className="px-2 py-1.5 border border-slate-200 rounded-lg text-xs outline-none bg-white font-bold text-slate-700"
+                        value={selectedStarterLang}
+                        onChange={e => setSelectedStarterLang(e.target.value)}
+                      >
+                        <option value="javascript">JavaScript</option>
+                        <option value="python">Python</option>
+                        <option value="typescript">TypeScript</option>
+                        <option value="cpp">C++</option>
+                        <option value="java">Java</option>
+                      </select>
+                    </div>
+                    <textarea
+                      rows={6}
+                      className="w-full p-3 border border-slate-250 rounded-xl font-mono text-xs bg-slate-900 text-slate-100 outline-none focus:border-purple-500"
+                      value={codingStarterCode[selectedStarterLang] || ''}
+                      onChange={e => {
+                        const text = e.target.value;
+                        setCodingStarterCode(prev => ({
+                          ...prev,
+                          [selectedStarterLang]: text
+                        }));
+                      }}
+                    />
+                  </div>
+
+                  {/* Test Cases List */}
+                  <div>
+                    <div className="flex justify-between items-center mb-3">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Test Cases ({codingTestCases.length})</label>
+                      <button
+                        type="button"
+                        onClick={() => setCodingTestCases([...codingTestCases, { input: '', expectedOutput: '', isHidden: false }])}
+                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-750 text-xs font-bold rounded-lg border border-purple-200 transition-all shadow-sm"
+                      >
+                        + Add Test Case
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {codingTestCases.map((tc, tcIdx) => (
+                        <div key={tcIdx} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 relative">
+                          <button
+                            type="button"
+                            onClick={() => setCodingTestCases(codingTestCases.filter((_, idx) => idx !== tcIdx))}
+                            className="absolute top-2 right-2 p-1 text-red-400 hover:text-red-655"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Standard Input / Args</label>
+                              <textarea
+                                rows={2}
+                                required
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-slate-800 text-xs font-mono"
+                                placeholder="e.g. 5\n1 2 3 4 5"
+                                value={tc.input}
+                                onChange={e => {
+                                  const updated = [...codingTestCases];
+                                  updated[tcIdx].input = e.target.value;
+                                  setCodingTestCases(updated);
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Expected Output</label>
+                              <textarea
+                                rows={2}
+                                required
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-slate-800 text-xs font-mono"
+                                placeholder="e.g. 15"
+                                value={tc.expectedOutput}
+                                onChange={e => {
+                                  const updated = [...codingTestCases];
+                                  updated[tcIdx].expectedOutput = e.target.value;
+                                  setCodingTestCases(updated);
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id={`tc-hidden-${tcIdx}`}
+                              checked={tc.isHidden === true || tc.isHidden === 'true'}
+                              onChange={e => {
+                                const updated = [...codingTestCases];
+                                updated[tcIdx].isHidden = e.target.checked;
+                                setCodingTestCases(updated);
+                              }}
+                              className="rounded text-purple-600 focus:ring-purple-500 h-4 w-4"
+                            />
+                            <label htmlFor={`tc-hidden-${tcIdx}`} className="text-xs font-bold text-slate-500 select-none">
+                              Is Hidden Test Case? (Used for final scoring, not visible to candidate)
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                      {codingTestCases.length === 0 && (
+                        <p className="text-slate-450 text-xs italic text-center py-4 border-2 border-dashed border-slate-100 rounded-xl">No test cases added yet.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="flex gap-2 justify-end pt-4 border-t border-slate-150">
+                    <Button 
+                      type="button"
+                      onClick={() => setEditingQuestion(null)} 
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl px-5 py-2.5 text-xs border-none"
+                    >
+                      Back
+                    </Button>
+                    <Button 
+                      type="submit"
+                      className="bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl px-5 py-2.5 text-xs border-none"
+                    >
+                      Save Question
+                    </Button>
+                  </div>
+                </form>
+              </>
             )}
           </div>
         </div>
