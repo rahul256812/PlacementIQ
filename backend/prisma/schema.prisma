@@ -18,6 +18,8 @@ enum ApplicationStatus {
   SHORTLISTED
   REJECTED
   HIRED
+  ACCEPTED
+  DECLINED
 }
 
 enum RecruiterStatus {

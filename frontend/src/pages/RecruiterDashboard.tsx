@@ -127,6 +127,18 @@ export function RecruiterDashboard() {
     }
   };
 
+  const handleToggleJobStatus = async (jobId: string, currentIsOpen: boolean) => {
+    try {
+      await JobService.updateJob(jobId, { isOpen: !currentIsOpen });
+      await loadJobs();
+      await loadAnalytics();
+    } catch (e: any) {
+      alert(e.response?.data?.error || 'Failed to update job status');
+    }
+  };
+
+  const selectedJob = jobs.find(j => j.id === selectedJobId);
+
   const addQuestion = () => {
     if (questionInput.trim()) {
       setNewJob({ ...newJob, questions: [...newJob.questions, questionInput.trim()] });
@@ -301,9 +313,11 @@ export function RecruiterDashboard() {
                     selectedApplicant.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                     selectedApplicant.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                     selectedApplicant.status === 'REJECTED' ? 'bg-red-50 text-red-700 border-red-200' :
-                    'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    selectedApplicant.status === 'HIRED' ? 'bg-indigo-50 text-indigo-750 border-indigo-200' :
+                    selectedApplicant.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 animate-bounce' :
+                    'bg-slate-50 text-slate-600 border-slate-200'
                   }`}>
-                    {selectedApplicant.status}
+                    {selectedApplicant.status === 'HIRED' ? 'OFFERED' : selectedApplicant.status}
                   </span>
                 </div>
 
@@ -383,23 +397,39 @@ export function RecruiterDashboard() {
                   )}
                 </div>
 
-                <div className="flex gap-2 border-t border-slate-100 pt-6">
-                  <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'SHORTLISTED')} className="bg-amber-50 text-amber-700 hover:bg-amber-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Shortlist</Button>
-                  <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'HIRED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Hire</Button>
-                  <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'REJECTED')} className="bg-red-50 text-red-700 hover:bg-red-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Reject</Button>
-                </div>
+                {selectedApplicant.status !== 'ACCEPTED' && selectedApplicant.status !== 'DECLINED' && (
+                  <div className="flex gap-2 border-t border-slate-100 pt-6">
+                    <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'SHORTLISTED')} className="bg-amber-50 text-amber-700 hover:bg-amber-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Shortlist</Button>
+                    <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'HIRED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Hire</Button>
+                    <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'REJECTED')} className="bg-red-50 text-red-700 hover:bg-red-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Reject</Button>
+                  </div>
+                )}
               </div>
             ) : selectedJobId ? (
               // APPLICANTS LIST
               <div>
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-black text-slate-900">Applicants ({applicants.length})</h2>
-                  <Button 
-                    onClick={() => handleStartEditJob(selectedJobId!)} 
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl py-2 px-4 text-xs transition-all flex items-center gap-1.5 border-none"
-                  >
-                    Edit Job Posting
-                  </Button>
+                  <div className="flex gap-2">
+                    {selectedJob && (
+                      <Button
+                        onClick={() => handleToggleJobStatus(selectedJob.id, selectedJob.isOpen)}
+                        className={`font-bold rounded-xl py-2 px-4 text-xs transition-all border-none ${
+                          selectedJob.isOpen
+                            ? 'bg-amber-100 hover:bg-amber-200 text-amber-800'
+                            : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800'
+                        }`}
+                      >
+                        {selectedJob.isOpen ? 'Hold Recruiting' : 'Resume Recruiting'}
+                      </Button>
+                    )}
+                    <Button 
+                      onClick={() => handleStartEditJob(selectedJobId!)} 
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl py-2 px-4 text-xs transition-all flex items-center gap-1.5 border-none"
+                    >
+                      Edit Job Posting
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-4">
                   {applicants.map(app => (
@@ -423,8 +453,10 @@ export function RecruiterDashboard() {
                           app.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border-blue-100' :
                           app.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border-amber-100' :
                           app.status === 'REJECTED' ? 'bg-red-50 text-red-700 border-red-100' :
-                          'bg-emerald-50 text-emerald-700 border-emerald-100'
-                        }`}>{app.status}</span>
+                          app.status === 'HIRED' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
+                          app.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-100 animate-pulse' :
+                          'bg-slate-50 text-slate-600 border-slate-150'
+                        }`}>{app.status === 'HIRED' ? 'OFFERED' : app.status}</span>
                       </div>
                       
                       <div className="flex gap-2 items-center justify-between border-t border-slate-100 pt-4 mt-2">
@@ -434,10 +466,12 @@ export function RecruiterDashboard() {
                         >
                           <User className="h-3.5 w-3.5" /> View Profile & Details
                         </button>
-                        <div className="flex gap-1.5">
-                          <Button size="sm" onClick={() => updateStatus(app.id, 'SHORTLISTED')} className="bg-amber-50 text-amber-700 hover:bg-amber-100 border-none font-bold text-xs">Shortlist</Button>
-                          <Button size="sm" onClick={() => updateStatus(app.id, 'HIRED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none font-bold text-xs">Hire</Button>
-                        </div>
+                        {app.status !== 'ACCEPTED' && app.status !== 'DECLINED' && (
+                          <div className="flex gap-1.5">
+                            <Button size="sm" onClick={() => updateStatus(app.id, 'SHORTLISTED')} className="bg-amber-50 text-amber-700 hover:bg-amber-100 border-none font-bold text-xs">Shortlist</Button>
+                            <Button size="sm" onClick={() => updateStatus(app.id, 'HIRED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none font-bold text-xs">Hire</Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

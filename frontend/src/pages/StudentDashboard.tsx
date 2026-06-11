@@ -127,6 +127,16 @@ export function StudentDashboard() {
     }
   };
 
+  const handleRespondToOffer = async (applicationId: string, response: 'ACCEPTED' | 'DECLINED') => {
+    try {
+      await ApplicationService.respondToOffer(applicationId, response);
+      alert(`Successfully ${response === 'ACCEPTED' ? 'accepted' : 'declined'} the offer!`);
+      loadData();
+    } catch (e: any) {
+      alert(e.response?.data?.error || 'Failed to respond to offer');
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-slate-600 font-medium">Loading placement dashboard...</div>;
 
   return (
@@ -215,14 +225,34 @@ export function StudentDashboard() {
                   <Calendar className="h-3.5 w-3.5" /> Applied on {new Date(app.appliedAt).toLocaleDateString()}
                 </p>
               </div>
-              <span className={`px-4 py-1.5 rounded-full text-xs font-bold text-center self-start sm:self-auto ${
-                app.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                app.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                app.status === 'REJECTED' ? 'bg-red-50 text-red-700 border border-red-200' :
-                'bg-emerald-50 text-emerald-700 border border-emerald-200'
-              }`}>
-                {app.status}
-              </span>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                {app.status === 'HIRED' && (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleRespondToOffer(app.id, 'ACCEPTED')} 
+                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                    >
+                      Accept Offer
+                    </button>
+                    <button 
+                      onClick={() => handleRespondToOffer(app.id, 'DECLINED')} 
+                      className="px-4 py-1.5 bg-red-50 text-red-650 hover:bg-red-100 rounded-xl text-xs font-bold transition-all"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                )}
+                <span className={`px-4 py-1.5 rounded-full text-xs font-bold text-center self-start sm:self-auto ${
+                  app.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                  app.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                  app.status === 'REJECTED' ? 'bg-red-50 text-red-700 border border-red-200' :
+                  app.status === 'HIRED' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 animate-pulse' :
+                  app.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                  'bg-slate-50 text-slate-600 border border-slate-200'
+                }`}>
+                  {app.status === 'HIRED' ? 'OFFER RECEIVED 🎉' : app.status}
+                </span>
+              </div>
             </div>
           ))}
           {myApplications.length === 0 && <p className="text-slate-500 text-center py-12">You haven't applied to any jobs yet.</p>}

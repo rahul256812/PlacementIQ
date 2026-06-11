@@ -129,4 +129,44 @@ router.patch('/:applicationId/status', authenticate, requireRole(['RECRUITER']),
   }
 });
 
+// Student responds to offer (ACCEPTED | DECLINED)
+router.patch('/:applicationId/respond', authenticate, requireRole(['STUDENT']), async (req: AuthRequest, res: any) => {
+  try {
+    const applicationId = req.params.applicationId as string;
+    const { response } = req.body; // 'ACCEPTED' | 'DECLINED'
+
+    if (!['ACCEPTED', 'DECLINED'].includes(response)) {
+      return res.status(400).json({ error: 'Invalid response' });
+    }
+
+    const studentProfile = await prisma.studentProfile.findUnique({
+      where: { userId: req.user!.id }
+    });
+
+    if (!studentProfile) return res.status(404).json({ error: 'Student profile not found' });
+
+    const application = await prisma.application.findUnique({
+      where: { id: applicationId }
+    });
+
+    if (!application) return res.status(404).json({ error: 'Application not found' });
+    if (application.studentProfileId !== studentProfile.id) {
+      return res.status(403).json({ error: 'Unauthorized to respond to this application' });
+    }
+    if (application.status !== 'HIRED') {
+      return res.status(400).json({ error: 'No active job offer to respond to' });
+    }
+
+    const updated = await prisma.application.update({
+      where: { id: applicationId },
+      data: { status: response }
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to respond to offer' });
+  }
+});
+
 export default router;

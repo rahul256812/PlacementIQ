@@ -21,7 +21,7 @@ export function Navbar() {
             <Building2 className="h-5 w-5 text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="font-black text-lg text-gray-900 leading-none">STEPS Placement</span>
+            <span className="font-black text-lg text-gray-900 leading-none">PlacementIQ</span>
             <span className="text-[10px] font-bold text-blue-600 tracking-wider uppercase leading-none mt-0.5">Portal</span>
           </div>
         </Link>

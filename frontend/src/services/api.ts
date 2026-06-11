@@ -69,6 +69,10 @@ export const ApplicationService = {
     const res = await api.patch(`/applications/${applicationId}/status`, { status });
     return res.data;
   },
+  respondToOffer: async (applicationId: string, response: 'ACCEPTED' | 'DECLINED') => {
+    const res = await api.patch(`/applications/${applicationId}/respond`, { response });
+    return res.data;
+  },
 };
 
 export const AdminService = {
