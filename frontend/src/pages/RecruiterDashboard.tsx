@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { JobService, ApplicationService, AnalyticsService } from '../services/api';
+import { JobService, ApplicationService, AnalyticsService, RoundService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import { 
@@ -13,7 +13,15 @@ import {
   Award,
   BookOpen,
   Mail,
-  AlertCircle
+  AlertCircle,
+  MessageSquare,
+  Send,
+  ArrowUp,
+  ArrowDown,
+  Plus,
+  Trash2,
+  Volume2,
+  Layers
 } from 'lucide-react';
 
 export function RecruiterDashboard() {
@@ -30,6 +38,7 @@ export function RecruiterDashboard() {
     salaryRange: string;
     jobType: string;
     questions: string[];
+    rounds: any[];
   }>({
     title: '',
     description: '',
@@ -37,11 +46,20 @@ export function RecruiterDashboard() {
     location: '',
     salaryRange: '',
     jobType: 'Full-time',
-    questions: []
+    questions: [],
+    rounds: []
   });
   const [questionInput, setQuestionInput] = useState('');
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'JOBS' | 'ANALYTICS'>('JOBS');
+  const [activeTab, setActiveTab] = useState<'JOBS' | 'ANALYTICS' | 'MESSAGES'>('JOBS');
+
+  // Communication Hub State
+  const [selectedMsgJobId, setSelectedMsgJobId] = useState<string | null>(null);
+  const [msgChannels, setMsgChannels] = useState<any[]>([]);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null); // null = General
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessageText, setNewMessageText] = useState('');
+  const [feedbackInput, setFeedbackInput] = useState('');
   const [analytics, setAnalytics] = useState<any>(null);
   const [selectedApplicant, setSelectedApplicant] = useState<any>(null); // For viewing detailed candidate profiles
 
@@ -91,9 +109,11 @@ export function RecruiterDashboard() {
 
       if (editingJobId) {
         await JobService.updateJob(editingJobId, jobData);
+        await RoundService.saveRounds(editingJobId, newJob.rounds);
         alert('Job updated successfully!');
       } else {
-        await JobService.createJob(jobData);
+        const createdJob = await JobService.createJob(jobData);
+        await RoundService.saveRounds(createdJob.id, newJob.rounds);
         alert('Job published successfully!');
       }
 
@@ -101,16 +121,22 @@ export function RecruiterDashboard() {
       setEditingJobId(null);
       loadJobs();
       loadAnalytics();
-      setNewJob({ title: '', description: '', requirements: '', location: '', salaryRange: '', jobType: 'Full-time', questions: [] });
+      setNewJob({ title: '', description: '', requirements: '', location: '', salaryRange: '', jobType: 'Full-time', questions: [], rounds: [] });
       setQuestionInput('');
     } catch (e: any) {
       alert(e.response?.data?.error || 'Failed to post job');
     }
   };
 
-  const handleStartEditJob = (jobId: string) => {
+  const handleStartEditJob = async (jobId: string) => {
     const jobToEdit = jobs.find(j => j.id === jobId);
     if (jobToEdit) {
+      let jobRounds: any[] = [];
+      try {
+        jobRounds = await RoundService.getRounds(jobId);
+      } catch (err) {
+        console.error(err);
+      }
       setNewJob({
         title: jobToEdit.title,
         description: jobToEdit.description,
@@ -118,12 +144,126 @@ export function RecruiterDashboard() {
         location: jobToEdit.location || '',
         salaryRange: jobToEdit.salaryRange || '',
         jobType: jobToEdit.jobType || 'Full-time',
-        questions: Array.isArray(jobToEdit.questions) ? jobToEdit.questions : []
+        questions: Array.isArray(jobToEdit.questions) ? jobToEdit.questions : [],
+        rounds: jobRounds
       });
       setQuestionInput('');
       setEditingJobId(jobId);
       setShowNewJob(true);
       setSelectedApplicant(null);
+    }
+  };
+
+  const addRound = () => {
+    setNewJob({
+      ...newJob,
+      rounds: [
+        ...newJob.rounds,
+        { title: '', type: 'TECHNICAL_INTERVIEW', format: 'ONLINE', description: '', instructions: '' }
+      ]
+    });
+  };
+
+  const removeRound = (index: number) => {
+    setNewJob({
+      ...newJob,
+      rounds: newJob.rounds.filter((_, i) => i !== index)
+    });
+  };
+
+  const updateRound = (index: number, key: string, value: any) => {
+    const updatedRounds = [...newJob.rounds];
+    updatedRounds[index] = { ...updatedRounds[index], [key]: value };
+    setNewJob({ ...newJob, rounds: updatedRounds });
+  };
+
+  const moveRoundUp = (index: number) => {
+    if (index === 0) return;
+    const updatedRounds = [...newJob.rounds];
+    const temp = updatedRounds[index - 1];
+    updatedRounds[index - 1] = updatedRounds[index];
+    updatedRounds[index] = temp;
+    setNewJob({ ...newJob, rounds: updatedRounds });
+  };
+
+  const moveRoundDown = (index: number) => {
+    if (index === newJob.rounds.length - 1) return;
+    const updatedRounds = [...newJob.rounds];
+    const temp = updatedRounds[index + 1];
+    updatedRounds[index + 1] = updatedRounds[index];
+    updatedRounds[index] = temp;
+    setNewJob({ ...newJob, rounds: updatedRounds });
+  };
+
+  const handleProgressCandidate = async (appId: string, status: 'QUALIFIED' | 'REJECTED') => {
+    try {
+      const res = await RoundService.progressCandidate(appId, status, feedbackInput);
+      alert(res.message || 'Candidate status updated');
+      setFeedbackInput('');
+      const data = await ApplicationService.getJobApplicants(selectedJobId!);
+      setApplicants(data);
+      const updatedApplicant = data.find((a: any) => a.id === appId);
+      if (updatedApplicant) {
+        setSelectedApplicant(updatedApplicant);
+      } else {
+        setSelectedApplicant(null);
+      }
+      loadAnalytics();
+    } catch (e: any) {
+      alert(e.response?.data?.error || 'Failed to progress candidate');
+    }
+  };
+
+  // Communication Hub State Functions
+  const loadChannelMessages = async (jobId: string, roundId: string | null) => {
+    try {
+      const data = await RoundService.getMessages(jobId);
+      const filtered = data.messages.filter((m: any) => m.roundId === roundId);
+      setMessages(filtered);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSelectMsgJob = async (jobId: string) => {
+    setSelectedMsgJobId(jobId);
+    setSelectedChannelId(null);
+    try {
+      const rounds = await RoundService.getRounds(jobId);
+      const channels = [
+        { id: null, title: 'General Announcements', icon: Volume2 },
+        ...rounds.map((r: any) => ({ id: r.id, title: `${r.title} (${r.format})`, icon: Layers }))
+      ];
+      setMsgChannels(channels);
+      
+      const data = await RoundService.getMessages(jobId);
+      const filtered = data.messages.filter((m: any) => m.roundId === null);
+      setMessages(filtered);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSelectChannel = async (channelId: string | null) => {
+    setSelectedChannelId(channelId);
+    if (selectedMsgJobId) {
+      await loadChannelMessages(selectedMsgJobId, channelId);
+    }
+  };
+
+  const handleSendAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessageText.trim() || !selectedMsgJobId) return;
+
+    try {
+      await RoundService.sendMessage(selectedMsgJobId, {
+        roundId: selectedChannelId,
+        content: newMessageText.trim()
+      });
+      setNewMessageText('');
+      await loadChannelMessages(selectedMsgJobId, selectedChannelId);
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to send announcement');
     }
   };
 
@@ -188,6 +328,17 @@ export function RecruiterDashboard() {
         >
           <BarChart3 className="h-4 w-4" /> Hiring Analytics
         </button>
+        <button 
+          onClick={() => {
+            setActiveTab('MESSAGES');
+            if (jobs.length > 0 && !selectedMsgJobId) {
+              handleSelectMsgJob(jobs[0].id);
+            }
+          }}
+          className={`pb-4 px-6 font-bold flex items-center gap-2 transition-all ${activeTab === 'MESSAGES' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-slate-500 hover:text-slate-900'}`}
+        >
+          <MessageSquare className="h-4 w-4" /> Communication Hub
+        </button>
       </div>
 
       {activeTab === 'JOBS' && (
@@ -201,7 +352,7 @@ export function RecruiterDashboard() {
                 setSelectedJobId(null); 
                 setSelectedApplicant(null); 
                 setEditingJobId(null);
-                setNewJob({ title: '', description: '', requirements: '', location: '', salaryRange: '', jobType: 'Full-time', questions: [] });
+                setNewJob({ title: '', description: '', requirements: '', location: '', salaryRange: '', jobType: 'Full-time', questions: [], rounds: [] });
                 setQuestionInput('');
               }} className="bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-all">
                 + Post Job
@@ -283,6 +434,94 @@ export function RecruiterDashboard() {
                             >
                               Remove
                             </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex justify-between items-center mb-4 border-t border-slate-100 pt-6">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Interview Process (Optional rounds)</label>
+                      <button 
+                        type="button" 
+                        onClick={addRound} 
+                        className="px-4 py-1.5 bg-purple-100 text-purple-700 hover:bg-purple-200 font-bold rounded-xl text-xs transition-all flex items-center gap-1"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add Round
+                      </button>
+                    </div>
+                    {newJob.rounds && newJob.rounds.length > 0 && (
+                      <div className="space-y-4 border border-slate-100 rounded-2xl p-4 bg-slate-50/50">
+                        {newJob.rounds.map((round, i) => (
+                          <div key={i} className="bg-white p-4 rounded-xl border border-slate-150 relative space-y-3 shadow-sm">
+                            <div className="flex justify-between items-center gap-3">
+                              <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">Round {i + 1}</span>
+                              <div className="flex gap-1">
+                                <button type="button" onClick={() => moveRoundUp(i)} className="p-1 text-slate-400 hover:text-slate-650" disabled={i === 0}><ArrowUp className="h-3.5 w-3.5" /></button>
+                                <button type="button" onClick={() => moveRoundDown(i)} className="p-1 text-slate-400 hover:text-slate-650" disabled={i === newJob.rounds.length - 1}><ArrowDown className="h-3.5 w-3.5" /></button>
+                                <button type="button" onClick={() => removeRound(i)} className="p-1 text-red-400 hover:text-red-650 ml-1"><Trash2 className="h-3.5 w-3.5" /></button>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Round Title</label>
+                                <input 
+                                  required 
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-slate-800 text-xs" 
+                                  placeholder="e.g. Coding Test or Technical Chat" 
+                                  value={round.title} 
+                                  onChange={e => updateRound(i, 'title', e.target.value)} 
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Type</label>
+                                  <select 
+                                    className="w-full px-2 py-2 border border-slate-200 rounded-lg outline-none text-slate-800 text-xs bg-white"
+                                    value={round.type} 
+                                    onChange={e => updateRound(i, 'type', e.target.value)}
+                                  >
+                                    <option value="MCQ">MCQ</option>
+                                    <option value="CODING">Coding</option>
+                                    <option value="TECHNICAL_INTERVIEW">Technical Interview</option>
+                                    <option value="HR_INTERVIEW">HR Interview</option>
+                                    <option value="GROUP_DISCUSSION">Group Discussion</option>
+                                    <option value="CUSTOM">Custom</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Format</label>
+                                  <select 
+                                    className="w-full px-2 py-2 border border-slate-200 rounded-lg outline-none text-slate-800 text-xs bg-white"
+                                    value={round.format} 
+                                    onChange={e => updateRound(i, 'format', e.target.value)}
+                                  >
+                                    <option value="ONLINE">Online</option>
+                                    <option value="IN_PERSON">In-Person</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Description (Optional)</label>
+                                <input 
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-slate-800 text-xs" 
+                                  placeholder="What is this round about?" 
+                                  value={round.description || ''} 
+                                  onChange={e => updateRound(i, 'description', e.target.value)} 
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Instructions (Optional)</label>
+                                <input 
+                                  className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-slate-800 text-xs" 
+                                  placeholder="What should the candidate prepare?" 
+                                  value={round.instructions || ''} 
+                                  onChange={e => updateRound(i, 'instructions', e.target.value)} 
+                                />
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -398,11 +637,98 @@ export function RecruiterDashboard() {
                   )}
                 </div>
 
-                {selectedApplicant.status !== 'OFFERED' && selectedApplicant.status !== 'ACCEPTED' && selectedApplicant.status !== 'DECLINED' && (
+                  {/* Custom Interview Rounds Tracker */}
+                  {selectedApplicant.job.rounds && selectedApplicant.job.rounds.length > 0 && (
+                    <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 mt-4">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-1.5">
+                        <Layers className="h-4 w-4 text-purple-500" /> Recruitment Progress
+                      </h3>
+                      <div className="space-y-4">
+                        {selectedApplicant.job.rounds.map((round: any, index: number) => {
+                          const progression = selectedApplicant.progressions?.find((p: any) => p.roundId === round.id);
+                          const isCurrent = progression?.status === 'PENDING';
+                          const isPassed = progression?.status === 'QUALIFIED';
+                          const isRejected = progression?.status === 'REJECTED';
+
+                          return (
+                            <div key={round.id} className={`flex items-start gap-3 p-3 rounded-xl border ${
+                              isCurrent ? 'bg-purple-50 border-purple-200 shadow-sm' :
+                              isPassed ? 'bg-emerald-50/50 border-emerald-100' :
+                              isRejected ? 'bg-red-50/50 border-red-100' :
+                              'bg-white border-slate-100 opacity-60'
+                            }`}>
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                                isCurrent ? 'bg-purple-100 text-purple-750' :
+                                isPassed ? 'bg-emerald-100 text-emerald-750' :
+                                isRejected ? 'bg-red-100 text-red-750' :
+                                'bg-slate-100 text-slate-500'
+                              }`}>
+                                Rd {index + 1}
+                              </span>
+                              <div className="flex-1">
+                                <h4 className="text-sm font-bold text-slate-800">{round.title} ({round.format})</h4>
+                                {round.description && <p className="text-xs text-slate-500 mt-0.5">{round.description}</p>}
+                                {progression?.feedback && (
+                                  <p className="text-xs text-purple-600 font-semibold mt-1 bg-white inline-block px-2.5 py-1 rounded-md border border-purple-100">
+                                    Feedback: {progression.feedback}
+                                  </p>
+                                )}
+                              </div>
+                              <span className="text-[10px] font-bold uppercase tracking-wider self-center">
+                                {isCurrent ? <span className="text-purple-650 animate-pulse font-extrabold">In Progress</span> :
+                                 isPassed ? <span className="text-emerald-600 font-bold">Passed</span> :
+                                 isRejected ? <span className="text-red-500 font-bold">Rejected</span> :
+                                 <span className="text-slate-400">Locked</span>}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Progression Action Form */}
+                      {selectedApplicant.progressions?.some((p: any) => p.status === 'PENDING') && (
+                        <div className="mt-5 border-t border-slate-200 pt-4 space-y-3">
+                          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Evaluation & Notes</label>
+                          <textarea
+                            rows={2}
+                            placeholder="Add evaluation feedback or instructions for this candidate..."
+                            value={feedbackInput}
+                            onChange={e => setFeedbackInput(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-850 text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleProgressCandidate(selectedApplicant.id, 'QUALIFIED')}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs py-2 flex-1"
+                            >
+                              Pass Candidate
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => handleProgressCandidate(selectedApplicant.id, 'REJECTED')}
+                              className="bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs py-2 flex-1"
+                            >
+                              Reject Candidate
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                {selectedApplicant.status !== 'OFFERED' && selectedApplicant.status !== 'ACCEPTED' && selectedApplicant.status !== 'DECLINED' && (!selectedApplicant.job.rounds || selectedApplicant.job.rounds.length === 0) && (
                   <div className="flex gap-2 border-t border-slate-100 pt-6">
                     <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'SHORTLISTED')} className="bg-amber-50 text-amber-700 hover:bg-amber-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Shortlist</Button>
                     <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'OFFERED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Make Offer</Button>
                     <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'REJECTED')} className="bg-red-50 text-red-700 hover:bg-red-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Reject</Button>
+                  </div>
+                )}
+
+                {selectedApplicant.status === 'APPLIED' && selectedApplicant.job.rounds && selectedApplicant.job.rounds.length > 0 && (
+                  <div className="flex gap-2 border-t border-slate-100 pt-6">
+                    <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'SHORTLISTED')} className="bg-purple-600 hover:bg-purple-700 text-white border-none px-6 py-2.5 font-bold rounded-xl flex-1">Shortlist (Start Interview Process)</Button>
+                    <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'REJECTED')} className="bg-red-50 text-red-750 hover:bg-red-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Reject</Button>
                   </div>
                 )}
               </div>
@@ -618,6 +944,113 @@ export function RecruiterDashboard() {
                 {analytics.jobsChartData.length === 0 && <p className="text-slate-400 text-sm text-center py-12">No jobs to show stats for.</p>}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* COMMUNICATION HUB TAB */}
+      {activeTab === 'MESSAGES' && (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Job Selection Sidebar */}
+          <div className="lg:col-span-1 border-r border-slate-100 pr-6 space-y-4">
+            <h2 className="text-lg font-black text-slate-900 mb-4 font-black">Select Job</h2>
+            <div className="space-y-2">
+              {jobs.map(job => (
+                <div
+                  key={job.id}
+                  onClick={() => handleSelectMsgJob(job.id)}
+                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                    selectedMsgJobId === job.id 
+                      ? 'border-purple-650 bg-purple-50/50' 
+                      : 'border-slate-100 hover:border-slate-200 bg-white'
+                  }`}
+                >
+                  <h3 className="font-bold text-slate-900 text-sm">{job.title}</h3>
+                  <span className="text-[10px] text-slate-400 font-semibold">{job.location || 'Remote'}</span>
+                </div>
+              ))}
+              {jobs.length === 0 && <p className="text-slate-500 text-sm">No jobs posted yet.</p>}
+            </div>
+          </div>
+
+          {/* Chat / Message Area */}
+          <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-6 bg-white border border-slate-100 rounded-3xl p-6 shadow-sm min-h-[500px]">
+            {selectedMsgJobId ? (
+              <>
+                {/* Channels Sidebar */}
+                <div className="md:col-span-1 border-r border-slate-100 pr-4 space-y-4">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Announcement Channels</h3>
+                  <div className="space-y-1">
+                    {msgChannels.map(channel => {
+                      const Icon = channel.icon;
+                      const isSelected = selectedChannelId === channel.id;
+                      return (
+                        <div
+                          key={channel.id || 'general'}
+                          onClick={() => handleSelectChannel(channel.id)}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer text-xs font-bold transition-all ${
+                            isSelected 
+                              ? 'bg-purple-100 text-purple-750' 
+                              : 'text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          <span className="truncate">{channel.title}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Messages Log & Input */}
+                <div className="md:col-span-2 flex flex-col h-full justify-between">
+                  <div className="flex-1 overflow-y-auto max-h-[350px] space-y-3 mb-4 pr-2">
+                    <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2 mb-3">
+                      {selectedChannelId 
+                        ? `${msgChannels.find(c => c.id === selectedChannelId)?.title || 'Round Channel'}`
+                        : 'General Announcements'
+                      }
+                    </h3>
+                    <div className="space-y-3">
+                      {messages.map((msg: any) => (
+                        <div key={msg.id} className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-1">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-bold text-purple-700">{msg.senderName}</span>
+                            <span className="text-slate-450">{new Date(msg.createdAt).toLocaleString()}</span>
+                          </div>
+                          <p className="text-sm text-slate-700 font-medium whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                        </div>
+                      ))}
+                      {messages.length === 0 && (
+                        <p className="text-slate-400 text-xs text-center py-12">No announcements posted in this channel yet.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSendAnnouncement} className="border-t border-slate-100 pt-4 flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Write an announcement to candidates..."
+                      value={newMessageText}
+                      onChange={e => setNewMessageText(e.target.value)}
+                      className="flex-1 px-4 py-3 border border-slate-200 rounded-xl outline-none focus:border-purple-500 text-slate-800 text-sm"
+                    />
+                    <button
+                      type="submit"
+                      className="p-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-all shadow-sm"
+                    >
+                      <Send className="h-4 w-4" />
+                    </button>
+                  </form>
+                </div>
+              </>
+            ) : (
+              <div className="md:col-span-3 flex flex-col items-center justify-center text-slate-400 py-12">
+                <MessageSquare className="h-16 w-16 mb-4 opacity-20 text-slate-650" />
+                <p className="font-bold text-slate-500">No Job Selected</p>
+                <p className="text-xs text-slate-400 mt-1">Please select a job from the left panel to load communication channels.</p>
+              </div>
+            )}
           </div>
         </div>
       )}

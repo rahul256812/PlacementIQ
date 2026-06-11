@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { JobService, ApplicationService, AuthService, AnalyticsService } from '../services/api';
+import { JobService, ApplicationService, AuthService, AnalyticsService, RoundService } from '../services/api';
 import { Button } from '../components/ui/button';
 import { 
   Briefcase, 
@@ -16,7 +16,12 @@ import {
   FileText,
   Save,
   Edit2,
-  X
+  X,
+  MessageSquare,
+  Layers,
+  Volume2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 export function StudentDashboard() {
@@ -27,6 +32,12 @@ export function StudentDashboard() {
   const [coverLetter, setCoverLetter] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+
+  // Expanded application details & Communication Hub
+  const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
+  const [studentChannels, setStudentChannels] = useState<any[]>([]);
+  const [selectedStudentChannelId, setSelectedStudentChannelId] = useState<string | null>(null); // null = General
+  const [studentMessages, setStudentMessages] = useState<any[]>([]);
 
   useEffect(() => {
     if (selectedJob) {
@@ -84,6 +95,56 @@ export function StudentDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadStudentChannelMessages = async (jobId: string, roundId: string | null) => {
+    try {
+      const data = await RoundService.getMessages(jobId);
+      const filtered = data.messages.filter((m: any) => m.roundId === roundId);
+      setStudentMessages(filtered);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleExpandApp = async (app: any) => {
+    if (expandedAppId === app.id) {
+      setExpandedAppId(null);
+      return;
+    }
+
+    setExpandedAppId(app.id);
+    setSelectedStudentChannelId(null);
+    setStudentMessages([]);
+
+    try {
+      const data = await RoundService.getMessages(app.jobId);
+      const generalChannel = { id: null, title: 'General Announcements', icon: Volume2 };
+      
+      const allowedRoundIds = data.allowedRoundIds || [];
+      const rounds = app.job.rounds || [];
+      const allowedRounds = rounds.filter((r: any) => allowedRoundIds.includes(r.id));
+
+      const channels = [
+        generalChannel,
+        ...allowedRounds.map((r: any) => ({
+          id: r.id,
+          title: `${r.title} (${r.format})`,
+          icon: Layers
+        }))
+      ];
+      setStudentChannels(channels);
+
+      const filtered = data.messages.filter((m: any) => m.roundId === null);
+      setStudentMessages(filtered);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSelectStudentChannel = async (jobId: string, channelId: string | null) => {
+    setSelectedStudentChannelId(channelId);
+    await loadStudentChannelMessages(jobId, channelId);
   };
 
   const handleApply = async (e: React.FormEvent) => {
@@ -215,45 +276,164 @@ export function StudentDashboard() {
       {activeTab === 'APPLICATIONS' && (
         <div className="space-y-4">
           {myApplications.map(app => (
-            <div key={app.id} className="bg-white rounded-2xl border border-slate-100 p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4 shadow-sm hover:shadow-md transition-all duration-200">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">{app.job.title}</h3>
-                <p className="text-slate-500 text-sm flex items-center gap-1 mt-1">
-                  <Building2 className="h-4 w-4 text-slate-400" /> {app.job.recruiter.companyName}
-                </p>
-                <p className="text-xs text-slate-400 mt-3 flex items-center gap-1">
-                  <Calendar className="h-3.5 w-3.5" /> Applied on {new Date(app.appliedAt).toLocaleDateString()}
-                </p>
+            <div key={app.id} className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">{app.job.title}</h3>
+                  <p className="text-slate-500 text-sm flex items-center gap-1 mt-1">
+                    <Building2 className="h-4 w-4 text-slate-400" /> {app.job.recruiter.companyName}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5" /> Applied on {new Date(app.appliedAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  {app.status === 'OFFERED' && (
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleRespondToOffer(app.id, 'ACCEPTED')} 
+                        className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                      >
+                        Accept Offer
+                      </button>
+                      <button 
+                        onClick={() => handleRespondToOffer(app.id, 'DECLINED')} 
+                        className="px-4 py-1.5 bg-red-50 text-red-655 hover:bg-red-100 rounded-xl text-xs font-bold transition-all"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  )}
+                  <span className={`px-4 py-1.5 rounded-full text-xs font-bold text-center self-start sm:self-auto ${
+                    app.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                    app.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                    app.status === 'REJECTED' ? 'bg-red-50 text-red-700 border border-red-200' :
+                    app.status === 'OFFERED' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 animate-pulse' :
+                    app.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                    app.status === 'DECLINED' ? 'bg-red-50 text-red-655 border border-red-200' :
+                    'bg-slate-50 text-slate-600 border border-slate-200'
+                  }`}>
+                    {app.status === 'OFFERED' ? 'OFFER RECEIVED 🎉' : app.status === 'ACCEPTED' ? 'HIRED 🎉' : app.status}
+                  </span>
+                  <button 
+                    onClick={() => handleExpandApp(app)} 
+                    className="p-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl text-slate-500 hover:text-slate-900 transition-all self-start sm:self-auto border border-slate-200"
+                  >
+                    {expandedAppId === app.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                {app.status === 'OFFERED' && (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleRespondToOffer(app.id, 'ACCEPTED')} 
-                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                    >
-                      Accept Offer
-                    </button>
-                    <button 
-                      onClick={() => handleRespondToOffer(app.id, 'DECLINED')} 
-                      className="px-4 py-1.5 bg-red-50 text-red-650 hover:bg-red-100 rounded-xl text-xs font-bold transition-all"
-                    >
-                      Decline
-                    </button>
+
+              {expandedAppId === app.id && (
+                <div className="border-t border-slate-100 pt-5 mt-2 space-y-6">
+                  {/* Interview Progression Timeline */}
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                      <Layers className="h-4 w-4 text-blue-500" /> Interview Process Status
+                    </h4>
+                    {app.job.rounds && app.job.rounds.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {app.job.rounds.map((round: any, index: number) => {
+                          const progression = app.progressions?.find((p: any) => p.roundId === round.id);
+                          const isCurrent = progression?.status === 'PENDING';
+                          const isPassed = progression?.status === 'QUALIFIED';
+                          const isRejected = progression?.status === 'REJECTED';
+
+                          return (
+                            <div key={round.id} className={`p-4 rounded-2xl border ${
+                              isCurrent ? 'bg-purple-50/50 border-purple-200 shadow-sm' :
+                              isPassed ? 'bg-emerald-50/30 border-emerald-100' :
+                              isRejected ? 'bg-red-50/30 border-red-100' :
+                              'bg-slate-50/30 border-slate-100 opacity-60'
+                            }`}>
+                              <div className="flex justify-between items-center mb-1">
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded ${
+                                  isCurrent ? 'bg-purple-100 text-purple-700' :
+                                  isPassed ? 'bg-emerald-100 text-emerald-700' :
+                                  isRejected ? 'bg-red-100 text-red-700' :
+                                  'bg-slate-150 text-slate-500'
+                                }`}>
+                                  Round {index + 1}
+                                </span>
+                                <span className="text-[10px] font-bold uppercase tracking-wider">
+                                  {isCurrent ? <span className="text-purple-650 animate-pulse font-extrabold">In Progress</span> :
+                                   isPassed ? <span className="text-emerald-600 font-bold">Passed</span> :
+                                   isRejected ? <span className="text-red-500 font-bold">Rejected</span> :
+                                   <span className="text-slate-400">Locked</span>}
+                                </span>
+                              </div>
+                              <h5 className="text-sm font-bold text-slate-800">{round.title}</h5>
+                              <p className="text-xs text-slate-450 mt-1">{round.description || 'No description provided'}</p>
+                              {round.instructions && <p className="text-xs text-blue-600 font-semibold mt-1">Instructions: {round.instructions}</p>}
+                              {progression?.feedback && (
+                                <p className="text-xs text-purple-600 font-medium mt-1 bg-white p-2 rounded-xl border border-purple-100 italic">
+                                  Feedback: "{progression.feedback}"
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      /* Standard Direct Pipeline */
+                      <div className="flex gap-2 text-center text-xs font-semibold text-slate-500">
+                        <span className="flex-1 bg-emerald-50 text-emerald-700 py-2 rounded-xl border border-emerald-150">1. Applied</span>
+                        <span className={`flex-1 py-2 rounded-xl border ${app.status !== 'APPLIED' ? 'bg-emerald-50 text-emerald-700 border-emerald-150' : 'bg-slate-50 border-slate-150'}`}>2. Shortlisted</span>
+                        <span className={`flex-1 py-2 rounded-xl border ${['OFFERED', 'ACCEPTED', 'DECLINED'].includes(app.status) ? 'bg-emerald-50 text-emerald-700 border-emerald-150' : 'bg-slate-50 border-slate-150'}`}>3. Offered</span>
+                        <span className={`flex-1 py-2 rounded-xl border ${app.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-150' : 'bg-slate-50 border-slate-150'}`}>4. Hired</span>
+                      </div>
+                    )}
                   </div>
-                )}
-                <span className={`px-4 py-1.5 rounded-full text-xs font-bold text-center self-start sm:self-auto ${
-                  app.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                  app.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                  app.status === 'REJECTED' ? 'bg-red-50 text-red-700 border border-red-200' :
-                  app.status === 'OFFERED' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 animate-pulse' :
-                  app.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                  app.status === 'DECLINED' ? 'bg-red-50 text-red-650 border border-red-200' :
-                  'bg-slate-50 text-slate-600 border border-slate-200'
-                }`}>
-                  {app.status === 'OFFERED' ? 'OFFER RECEIVED 🎉' : app.status === 'ACCEPTED' ? 'HIRED 🎉' : app.status}
-                </span>
-              </div>
+
+                  {/* Communication Channel Inside Application */}
+                  <div className="border-t border-slate-100 pt-5">
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                      <MessageSquare className="h-4 w-4 text-blue-500" /> Communication Hub
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 min-h-[200px]">
+                      {/* Channels list */}
+                      <div className="md:col-span-1 border-r border-slate-100 pr-3 space-y-1">
+                        {studentChannels.map(channel => {
+                          const Icon = channel.icon;
+                          const isSelected = selectedStudentChannelId === channel.id;
+                          return (
+                            <div
+                              key={channel.id || 'general'}
+                              onClick={() => handleSelectStudentChannel(app.jobId, channel.id)}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer text-xs font-bold transition-all ${
+                                isSelected 
+                                  ? 'bg-blue-100 text-blue-750' 
+                                  : 'text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              <Icon className="h-3.5 w-3.5" />
+                              <span className="truncate">{channel.title}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Channel messages */}
+                      <div className="md:col-span-3 flex flex-col justify-between h-full min-h-[150px]">
+                        <div className="flex-1 overflow-y-auto max-h-[180px] space-y-3 mb-2 pr-1">
+                          {studentMessages.map((msg: any) => (
+                            <div key={msg.id} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-1">
+                              <div className="flex justify-between items-center text-[10px]">
+                                <span className="font-bold text-purple-700">{msg.senderName}</span>
+                                <span className="text-slate-450">{new Date(msg.createdAt).toLocaleString()}</span>
+                              </div>
+                              <p className="text-xs text-slate-600 font-medium whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                            </div>
+                          ))}
+                          {studentMessages.length === 0 && (
+                            <p className="text-slate-400 text-xs text-center py-6">No announcements posted in this channel yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           {myApplications.length === 0 && <p className="text-slate-500 text-center py-12">You haven't applied to any jobs yet.</p>}

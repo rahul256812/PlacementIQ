@@ -81,6 +81,8 @@ model Job {
 
   recruiter          RecruiterProfile @relation(fields: [recruiterProfileId], references: [id])
   applications       Application[]
+  rounds             InterviewRound[]
+  roundMessages      RoundMessage[]
 }
 
 model Application {
@@ -94,4 +96,48 @@ model Application {
 
   job              Job               @relation(fields: [jobId], references: [id])
   student          StudentProfile    @relation(fields: [studentProfileId], references: [id])
+  progressions     CandidateProgress[]
+}
+
+model InterviewRound {
+  id           String              @id @default(uuid())
+  jobId        String
+  title        String
+  type         String              // MCQ, CODING, TECHNICAL_INTERVIEW, HR_INTERVIEW, GROUP_DISCUSSION, CUSTOM
+  format       String              // ONLINE, IN_PERSON
+  description  String?
+  instructions String?
+  order        Int                 // 0-indexed sorting
+  createdAt    DateTime            @default(now())
+
+  job          Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  progressions CandidateProgress[]
+  messages     RoundMessage[]
+}
+
+model CandidateProgress {
+  id            String         @id @default(uuid())
+  applicationId String
+  roundId       String
+  status        String         @default("PENDING") // PENDING, QUALIFIED, REJECTED
+  feedback      String?
+  updatedAt     DateTime       @updatedAt
+
+  application   Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  round         InterviewRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, roundId])
+}
+
+model RoundMessage {
+  id         String          @id @default(uuid())
+  jobId      String
+  roundId    String?         // Null means general announcement for all applicants
+  senderId   String
+  senderName String
+  content    String
+  createdAt  DateTime        @default(now())
+
+  job        Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  round      InterviewRound? @relation(fields: [roundId], references: [id], onDelete: Cascade)
 }

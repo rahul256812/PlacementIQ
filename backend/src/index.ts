@@ -6,6 +6,7 @@ import jobsRoutes from './routes/jobs';
 import applicationsRoutes from './routes/applications';
 import adminRoutes from './routes/admin';
 import analyticsRoutes from './routes/analytics';
+import roundsRoutes from './routes/rounds';
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use('/api/jobs', jobsRoutes);
 app.use('/api/applications', applicationsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api', roundsRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

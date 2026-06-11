@@ -101,4 +101,27 @@ export const AnalyticsService = {
   },
 };
 
+export const RoundService = {
+  getRounds: async (jobId: string) => {
+    const res = await api.get(`/jobs/${jobId}/rounds`);
+    return res.data;
+  },
+  saveRounds: async (jobId: string, rounds: any[]) => {
+    const res = await api.post(`/jobs/${jobId}/rounds`, { rounds });
+    return res.data;
+  },
+  progressCandidate: async (applicationId: string, status: 'QUALIFIED' | 'REJECTED', feedback?: string) => {
+    const res = await api.post(`/applications/${applicationId}/progress`, { status, feedback });
+    return res.data;
+  },
+  getMessages: async (jobId: string) => {
+    const res = await api.get(`/jobs/${jobId}/messages`);
+    return res.data;
+  },
+  sendMessage: async (jobId: string, data: { roundId: string | null; content: string }) => {
+    const res = await api.post(`/jobs/${jobId}/messages`, data);
+    return res.data;
+  },
+};
+
 export default api;

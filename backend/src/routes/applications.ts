@@ -52,8 +52,12 @@ router.get('/me', authenticate, requireRole(['STUDENT']), async (req: AuthReques
       include: {
         job: {
           include: {
-            recruiter: { select: { companyName: true } }
+            recruiter: { select: { companyName: true } },
+            rounds: { orderBy: { order: 'asc' } }
           }
+        },
+        progressions: {
+          include: { round: true }
         }
       },
       orderBy: { appliedAt: 'desc' }
@@ -83,7 +87,14 @@ router.get('/job/:jobId', authenticate, requireRole(['RECRUITER']), async (req: 
     const applications = await prisma.application.findMany({
       where: { jobId },
       include: {
-        job: true,
+        job: {
+          include: {
+            rounds: { orderBy: { order: 'asc' } }
+          }
+        },
+        progressions: {
+          include: { round: true }
+        },
         student: {
           include: { user: { select: { fullName: true, email: true } } }
         }
@@ -123,8 +134,32 @@ router.patch('/:applicationId/status', authenticate, requireRole(['RECRUITER']),
       data: { status }
     });
 
+    if (status === 'SHORTLISTED') {
+      const firstRound = await prisma.interviewRound.findFirst({
+        where: { jobId: application.jobId },
+        orderBy: { order: 'asc' }
+      });
+      if (firstRound) {
+        await prisma.candidateProgress.upsert({
+          where: {
+            applicationId_roundId: {
+              applicationId,
+              roundId: firstRound.id
+            }
+          },
+          update: { status: 'PENDING' },
+          create: {
+            applicationId,
+            roundId: firstRound.id,
+            status: 'PENDING'
+          }
+        });
+      }
+    }
+
     res.json(updated);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Failed to update status' });
   }
 });
