@@ -313,11 +313,12 @@ export function RecruiterDashboard() {
                     selectedApplicant.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                     selectedApplicant.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                     selectedApplicant.status === 'REJECTED' ? 'bg-red-50 text-red-700 border-red-200' :
-                    selectedApplicant.status === 'HIRED' ? 'bg-indigo-50 text-indigo-750 border-indigo-200' :
+                    selectedApplicant.status === 'OFFERED' ? 'bg-indigo-50 text-indigo-750 border-indigo-200 animate-pulse' :
                     selectedApplicant.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 animate-bounce' :
+                    selectedApplicant.status === 'DECLINED' ? 'bg-red-50 text-red-650 border-red-200' :
                     'bg-slate-50 text-slate-600 border-slate-200'
                   }`}>
-                    {selectedApplicant.status === 'HIRED' ? 'OFFERED' : selectedApplicant.status}
+                    {selectedApplicant.status === 'OFFERED' ? 'OFFERED' : selectedApplicant.status === 'ACCEPTED' ? 'HIRED' : selectedApplicant.status}
                   </span>
                 </div>
 
@@ -397,10 +398,10 @@ export function RecruiterDashboard() {
                   )}
                 </div>
 
-                {selectedApplicant.status !== 'ACCEPTED' && selectedApplicant.status !== 'DECLINED' && (
+                {selectedApplicant.status !== 'OFFERED' && selectedApplicant.status !== 'ACCEPTED' && selectedApplicant.status !== 'DECLINED' && (
                   <div className="flex gap-2 border-t border-slate-100 pt-6">
                     <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'SHORTLISTED')} className="bg-amber-50 text-amber-700 hover:bg-amber-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Shortlist</Button>
-                    <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'HIRED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Hire</Button>
+                    <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'OFFERED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Make Offer</Button>
                     <Button size="sm" onClick={() => updateStatus(selectedApplicant.id, 'REJECTED')} className="bg-red-50 text-red-700 hover:bg-red-100 border-none px-6 py-2.5 font-bold rounded-xl flex-1">Reject</Button>
                   </div>
                 )}
@@ -453,10 +454,11 @@ export function RecruiterDashboard() {
                           app.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border-blue-100' :
                           app.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border-amber-100' :
                           app.status === 'REJECTED' ? 'bg-red-50 text-red-700 border-red-100' :
-                          app.status === 'HIRED' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
-                          app.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-100 animate-pulse' :
+                          app.status === 'OFFERED' ? 'bg-indigo-50 text-indigo-700 border-indigo-100 animate-pulse' :
+                          app.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                          app.status === 'DECLINED' ? 'bg-red-50 text-red-600 border-red-100' :
                           'bg-slate-50 text-slate-600 border-slate-150'
-                        }`}>{app.status === 'HIRED' ? 'OFFERED' : app.status}</span>
+                        }`}>{app.status === 'OFFERED' ? 'OFFERED' : app.status === 'ACCEPTED' ? 'HIRED' : app.status}</span>
                       </div>
                       
                       <div className="flex gap-2 items-center justify-between border-t border-slate-100 pt-4 mt-2">
@@ -466,10 +468,10 @@ export function RecruiterDashboard() {
                         >
                           <User className="h-3.5 w-3.5" /> View Profile & Details
                         </button>
-                        {app.status !== 'ACCEPTED' && app.status !== 'DECLINED' && (
+                        {app.status !== 'OFFERED' && app.status !== 'ACCEPTED' && app.status !== 'DECLINED' && (
                           <div className="flex gap-1.5">
                             <Button size="sm" onClick={() => updateStatus(app.id, 'SHORTLISTED')} className="bg-amber-50 text-amber-700 hover:bg-amber-100 border-none font-bold text-xs">Shortlist</Button>
-                            <Button size="sm" onClick={() => updateStatus(app.id, 'HIRED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none font-bold text-xs">Hire</Button>
+                            <Button size="sm" onClick={() => updateStatus(app.id, 'OFFERED')} className="bg-green-50 text-green-700 hover:bg-green-100 border-none font-bold text-xs">Make Offer</Button>
                           </div>
                         )}
                       </div>
@@ -563,11 +565,21 @@ export function RecruiterDashboard() {
 
                 <div>
                   <div className="flex justify-between text-sm font-semibold text-slate-700 mb-1">
-                    <span>Hired ({analytics.applications.HIRED})</span>
-                    <span>{analytics.summary.totalApplications > 0 ? Math.round((analytics.applications.HIRED / analytics.summary.totalApplications) * 100) : 0}%</span>
+                    <span>Offered ({analytics.applications.OFFERED})</span>
+                    <span>{analytics.summary.totalApplications > 0 ? Math.round((analytics.applications.OFFERED / analytics.summary.totalApplications) * 100) : 0}%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full rounded-full transition-all" style={{ width: `${analytics.summary.totalApplications > 0 ? (analytics.applications.HIRED / analytics.summary.totalApplications) * 100 : 0}%` }}></div>
+                    <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${analytics.summary.totalApplications > 0 ? (analytics.applications.OFFERED / analytics.summary.totalApplications) * 100 : 0}%` }}></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-sm font-semibold text-slate-700 mb-1">
+                    <span>Hired ({analytics.applications.ACCEPTED})</span>
+                    <span>{analytics.summary.totalApplications > 0 ? Math.round((analytics.applications.ACCEPTED / analytics.summary.totalApplications) * 100) : 0}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                    <div className="bg-emerald-500 h-full rounded-full transition-all" style={{ width: `${analytics.summary.totalApplications > 0 ? (analytics.applications.ACCEPTED / analytics.summary.totalApplications) * 100 : 0}%` }}></div>
                   </div>
                 </div>
 

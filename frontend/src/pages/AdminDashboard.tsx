@@ -215,11 +215,21 @@ export function AdminDashboard() {
 
                 <div>
                   <div className="flex justify-between text-xs font-semibold text-slate-700 mb-0.5">
-                    <span>Hired / Offered ({analytics.applications.HIRED})</span>
-                    <span>{analytics.summary.totalApplications > 0 ? Math.round((analytics.applications.HIRED / analytics.summary.totalApplications) * 100) : 0}%</span>
+                    <span>Offered ({analytics.applications.OFFERED})</span>
+                    <span>{analytics.summary.totalApplications > 0 ? Math.round((analytics.applications.OFFERED / analytics.summary.totalApplications) * 100) : 0}%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${analytics.summary.totalApplications > 0 ? (analytics.applications.HIRED / analytics.summary.totalApplications) * 100 : 0}%` }}></div>
+                    <div className="bg-indigo-500 h-full rounded-full" style={{ width: `${analytics.summary.totalApplications > 0 ? (analytics.applications.OFFERED / analytics.summary.totalApplications) * 100 : 0}%` }}></div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs font-semibold text-slate-700 mb-0.5">
+                    <span>Hired ({analytics.applications.ACCEPTED})</span>
+                    <span>{analytics.summary.totalApplications > 0 ? Math.round((analytics.applications.ACCEPTED / analytics.summary.totalApplications) * 100) : 0}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${analytics.summary.totalApplications > 0 ? (analytics.applications.ACCEPTED / analytics.summary.totalApplications) * 100 : 0}%` }}></div>
                   </div>
                 </div>
               </div>

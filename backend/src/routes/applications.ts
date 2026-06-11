@@ -153,7 +153,7 @@ router.patch('/:applicationId/respond', authenticate, requireRole(['STUDENT']), 
     if (application.studentProfileId !== studentProfile.id) {
       return res.status(403).json({ error: 'Unauthorized to respond to this application' });
     }
-    if (application.status !== 'HIRED') {
+    if (application.status !== 'OFFERED') {
       return res.status(400).json({ error: 'No active job offer to respond to' });
     }
 

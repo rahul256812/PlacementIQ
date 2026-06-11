@@ -226,7 +226,7 @@ export function StudentDashboard() {
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                {app.status === 'HIRED' && (
+                {app.status === 'OFFERED' && (
                   <div className="flex gap-2">
                     <button 
                       onClick={() => handleRespondToOffer(app.id, 'ACCEPTED')} 
@@ -246,11 +246,12 @@ export function StudentDashboard() {
                   app.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
                   app.status === 'SHORTLISTED' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                   app.status === 'REJECTED' ? 'bg-red-50 text-red-700 border border-red-200' :
-                  app.status === 'HIRED' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 animate-pulse' :
+                  app.status === 'OFFERED' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 animate-pulse' :
                   app.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                  app.status === 'DECLINED' ? 'bg-red-50 text-red-650 border border-red-200' :
                   'bg-slate-50 text-slate-600 border border-slate-200'
                 }`}>
-                  {app.status === 'HIRED' ? 'OFFER RECEIVED 🎉' : app.status}
+                  {app.status === 'OFFERED' ? 'OFFER RECEIVED 🎉' : app.status === 'ACCEPTED' ? 'HIRED 🎉' : app.status}
                 </span>
               </div>
             </div>
@@ -495,7 +496,7 @@ export function StudentDashboard() {
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Hired Status</p>
-                <p className="text-2xl font-black text-slate-900 mt-1">{analytics.applications.HIRED > 0 ? 'Placed 🎉' : 'In Progress'}</p>
+                <p className="text-2xl font-black text-slate-900 mt-1">{analytics.applications.ACCEPTED > 0 ? 'Placed 🎉' : 'In Progress'}</p>
               </div>
             </div>
 
@@ -538,11 +539,21 @@ export function StudentDashboard() {
 
               <div>
                 <div className="flex justify-between text-sm font-semibold text-slate-700 mb-1">
-                  <span>Hired ({analytics.applications.HIRED})</span>
-                  <span>{analytics.totalApplications > 0 ? Math.round((analytics.applications.HIRED / analytics.totalApplications) * 100) : 0}%</span>
+                  <span>Offered ({analytics.applications.OFFERED})</span>
+                  <span>{analytics.totalApplications > 0 ? Math.round((analytics.applications.OFFERED / analytics.totalApplications) * 100) : 0}%</span>
                 </div>
                 <div className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden">
-                  <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${analytics.totalApplications > 0 ? (analytics.applications.HIRED / analytics.totalApplications) * 100 : 0}%` }}></div>
+                  <div className="bg-indigo-500 h-full rounded-full transition-all duration-500" style={{ width: `${analytics.totalApplications > 0 ? (analytics.applications.OFFERED / analytics.totalApplications) * 100 : 0}%` }}></div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-sm font-semibold text-slate-700 mb-1">
+                  <span>Hired ({analytics.applications.ACCEPTED})</span>
+                  <span>{analytics.totalApplications > 0 ? Math.round((analytics.applications.ACCEPTED / analytics.totalApplications) * 100) : 0}%</span>
+                </div>
+                <div className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden">
+                  <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${analytics.totalApplications > 0 ? (analytics.applications.ACCEPTED / analytics.totalApplications) * 100 : 0}%` }}></div>
                 </div>
               </div>
 

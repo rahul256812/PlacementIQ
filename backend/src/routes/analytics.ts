@@ -32,8 +32,10 @@ router.get('/admin', authenticate, requireRole(['ADMIN']), async (req: AuthReque
     const statusCounts = {
       APPLIED: 0,
       SHORTLISTED: 0,
+      OFFERED: 0,
+      ACCEPTED: 0,
       REJECTED: 0,
-      HIRED: 0,
+      DECLINED: 0,
     };
 
     appBreakdown.forEach((item) => {
@@ -42,12 +44,12 @@ router.get('/admin', authenticate, requireRole(['ADMIN']), async (req: AuthReque
       }
     });
 
-    // Students placed (at least one HIRED application)
+    // Students placed (at least one ACCEPTED application)
     const placedStudentsCount = await prisma.studentProfile.count({
       where: {
         applications: {
           some: {
-            status: 'HIRED',
+            status: 'ACCEPTED',
           },
         },
       },
@@ -125,8 +127,10 @@ router.get('/recruiter', authenticate, requireRole(['RECRUITER']), async (req: A
     const statusCounts = {
       APPLIED: 0,
       SHORTLISTED: 0,
+      OFFERED: 0,
+      ACCEPTED: 0,
       REJECTED: 0,
-      HIRED: 0,
+      DECLINED: 0,
     };
 
     appBreakdown.forEach((item) => {
@@ -180,8 +184,10 @@ router.get('/student', authenticate, requireRole(['STUDENT']), async (req: AuthR
     const statusCounts = {
       APPLIED: 0,
       SHORTLISTED: 0,
+      OFFERED: 0,
+      ACCEPTED: 0,
       REJECTED: 0,
-      HIRED: 0,
+      DECLINED: 0,
     };
 
     myApps.forEach((app) => {
