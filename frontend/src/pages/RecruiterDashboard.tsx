@@ -2646,6 +2646,7 @@ export function RecruiterDashboard() {
               </>
             )}
           </div>
+        </div>
       )}
 
       {/* AI SCREENING MODAL */}
