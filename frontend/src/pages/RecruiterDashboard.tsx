@@ -26,7 +26,8 @@ import {
   X,
   ArrowLeft,
   Edit3,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 
 const formatDatetimeLocal = (dateString: string | null | undefined) => {
@@ -115,6 +116,7 @@ export function RecruiterDashboard() {
   const [screeningKeywords, setScreeningKeywords] = useState('');
   const [isScreeningLoading, setIsScreeningLoading] = useState(false);
   const [aiSortOrder, setAiSortOrder] = useState<'NONE' | 'HIGH_TO_LOW' | 'LOW_TO_HIGH'>('NONE');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleRunScreening = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -905,6 +907,24 @@ export function RecruiterDashboard() {
                     <p className="text-slate-500 text-sm flex items-center gap-1 mt-1">
                       <Mail className="h-4 w-4" /> {selectedApplicant.student.user.email}
                     </p>
+                    <button
+                      onClick={async () => {
+                        if (!selectedJobId) return;
+                        setIsRefreshing(true);
+                        try {
+                          const data = await ApplicationService.getJobApplicants(selectedJobId);
+                          setApplicants(data);
+                          const updated = data.find((a: any) => a.id === selectedApplicant.id);
+                          if (updated) setSelectedApplicant(updated);
+                        } finally {
+                          setIsRefreshing(false);
+                        }
+                      }}
+                      className="mt-2 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200 transition-all"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      {isRefreshing ? 'Refreshing...' : 'Refresh Latest Results'}
+                    </button>
                   </div>
                   <span className={`px-4 py-1.5 rounded-full text-xs font-bold border ${
                     selectedApplicant.status === 'APPLIED' ? 'bg-blue-50 text-blue-700 border-blue-200' :
@@ -1435,6 +1455,21 @@ export function RecruiterDashboard() {
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-black text-slate-900">Applicants ({applicants.length})</h2>
                   <div className="flex gap-2">
+                    <Button
+                      onClick={async () => {
+                        if (!selectedJobId) return;
+                        setIsRefreshing(true);
+                        try {
+                          await loadApplicants(selectedJobId);
+                        } finally {
+                          setIsRefreshing(false);
+                        }
+                      }}
+                      className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl py-2 px-4 text-xs transition-all flex items-center gap-1.5 border border-emerald-200"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      {isRefreshing ? 'Refreshing...' : 'Refresh Results'}
+                    </Button>
                     {selectedJob && (
                       <Button
                         onClick={() => handleToggleJobStatus(selectedJob.id, selectedJob.isOpen)}
