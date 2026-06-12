@@ -11,8 +11,27 @@ import roundsRoutes from './routes/rounds';
 dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+// CORS — allow Vercel frontend + localhost dev
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:5173',
+  'http://localhost:3000',
+].filter(Boolean) as string[];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.some(o => origin.startsWith(o))) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
+
+app.use(express.json({ limit: '10mb' }));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
