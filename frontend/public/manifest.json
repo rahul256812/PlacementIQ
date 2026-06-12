@@ -1,6 +1,6 @@
 {
-  "name": "SRM Placement Intelligence",
-  "short_name": "SRM PI",
+  "name": "PlacementIQ Portal",
+  "short_name": "PlacementIQ",
   "description": "Data-driven insights for campus placement decisions",
   "start_url": "/",
   "display": "standalone",

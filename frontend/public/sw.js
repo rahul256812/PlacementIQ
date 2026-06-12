@@ -1,4 +1,4 @@
-const CACHE_NAME = 'srm-pi-v1';
+const CACHE_NAME = 'placementiq-v1';
 const urlsToCache = [
   '/',
   '/static/js/bundle.js',
