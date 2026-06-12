@@ -81,6 +81,10 @@ export const ApplicationService = {
     const res = await api.patch(`/applications/${applicationId}/respond`, { response });
     return res.data;
   },
+  aiScreenApplicants: async (jobId: string, keywords: string) => {
+    const res = await api.post(`/applications/job/${jobId}/ai-screen`, { keywords });
+    return res.data;
+  },
 };
 
 export const AdminService = {

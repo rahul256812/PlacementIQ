@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
+import { screenCandidate } from '../utils/aiScreening';
 
 const router = Router();
 
@@ -214,6 +215,70 @@ router.patch('/:applicationId/respond', authenticate, requireRole(['STUDENT']), 
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to respond to offer' });
+  }
+});
+
+// Trigger AI screening for all applicants of a job (Recruiter only)
+router.post('/job/:jobId/ai-screen', authenticate, requireRole(['RECRUITER']), async (req: AuthRequest, res: any) => {
+  try {
+    const jobId = req.params.jobId as string;
+    const { keywords } = req.body;
+
+    if (!keywords || !keywords.trim()) {
+      return res.status(400).json({ error: 'Keywords are required for screening' });
+    }
+
+    const recruiterProfile = await prisma.recruiterProfile.findUnique({
+      where: { userId: req.user!.id }
+    });
+
+    const job = await prisma.job.findUnique({ where: { id: jobId } });
+    if (!job || job.recruiterProfileId !== recruiterProfile?.id) {
+      return res.status(403).json({ error: 'Unauthorized to screen applicants for this job' });
+    }
+
+    // Get all applications for this job
+    const applications = await prisma.application.findMany({
+      where: { jobId },
+      include: {
+        student: true
+      }
+    });
+
+    for (const app of applications) {
+      const screening = screenCandidate(app.student, app.coverLetterText, keywords);
+      await prisma.application.update({
+        where: { id: app.id },
+        data: {
+          aiScreeningScore: screening.score,
+          aiScreeningFeedback: JSON.stringify(screening.feedback)
+        }
+      });
+    }
+
+    // Return the updated applications list complete with round details and progressions
+    const updatedApplications = await prisma.application.findMany({
+      where: { jobId },
+      include: {
+        job: {
+          include: {
+            rounds: { orderBy: { order: 'asc' } }
+          }
+        },
+        progressions: {
+          include: { round: true, mcqResponse: true, codingSubmissions: { include: { question: true } } }
+        },
+        student: {
+          include: { user: { select: { fullName: true, email: true } } }
+        }
+      },
+      orderBy: { appliedAt: 'desc' }
+    });
+
+    res.json(updatedApplications);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to run AI screening' });
   }
 });
 

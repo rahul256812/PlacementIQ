@@ -25,7 +25,8 @@ import {
   History,
   X,
   ArrowLeft,
-  Edit3
+  Edit3,
+  Sparkles
 } from 'lucide-react';
 
 const formatDatetimeLocal = (dateString: string | null | undefined) => {
@@ -108,6 +109,34 @@ export function RecruiterDashboard() {
   const [isMeetLinkPublished, setIsMeetLinkPublished] = useState(false);
   const [analytics, setAnalytics] = useState<any>(null);
   const [selectedApplicant, setSelectedApplicant] = useState<any>(null); // For viewing detailed candidate profiles
+
+  // AI Screening States
+  const [isScreeningModalOpen, setIsScreeningModalOpen] = useState(false);
+  const [screeningKeywords, setScreeningKeywords] = useState('');
+  const [isScreeningLoading, setIsScreeningLoading] = useState(false);
+  const [aiSortOrder, setAiSortOrder] = useState<'NONE' | 'HIGH_TO_LOW' | 'LOW_TO_HIGH'>('NONE');
+
+  const handleRunScreening = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!screeningKeywords || !screeningKeywords.trim()) {
+      alert("Please enter keywords or job requirements to run screening.");
+      return;
+    }
+    setIsScreeningLoading(true);
+    try {
+      const data = await ApplicationService.aiScreenApplicants(selectedJobId!, screeningKeywords);
+      setApplicants(data);
+      alert("AI Screening completed successfully!");
+      setIsScreeningModalOpen(false);
+      // Auto-set sorting to show highest matches first
+      setAiSortOrder('HIGH_TO_LOW');
+      setMcqSortOrder('DEFAULT');
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Failed to run AI screening");
+    } finally {
+      setIsScreeningLoading(false);
+    }
+  };
 
   const selectedMsgJob = jobs.find(j => j.id === selectedMsgJobId);
   const isSelectedMsgJobClosed = selectedMsgJob ? !selectedMsgJob.isOpen : false;
@@ -919,6 +948,50 @@ export function RecruiterDashboard() {
                   </div>
                 </div>
 
+                {selectedApplicant.aiScreeningScore != null && (() => {
+                  let feedbackObj = { matchedKeywords: [], missingKeywords: [], summary: "" };
+                  try {
+                    feedbackObj = JSON.parse(selectedApplicant.aiScreeningFeedback || "{}");
+                  } catch (e) {}
+
+                  return (
+                    <div className="bg-emerald-50/40 border border-emerald-100 rounded-2xl p-5 mb-6 text-left">
+                      <h3 className="text-sm font-semibold uppercase tracking-wider text-emerald-800 mb-2.5 flex items-center gap-1.5">
+                        <Sparkles className="h-4 w-4 text-emerald-600 animate-pulse" /> AI Screening Match Score: {Math.round(selectedApplicant.aiScreeningScore)}%
+                      </h3>
+                      <p className="text-xs text-slate-700 font-semibold mb-3">{feedbackObj.summary || "Evaluation completed."}</p>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-white/80 p-3 rounded-xl border border-emerald-100/60">
+                          <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-2">Matched Requirements</p>
+                          <div className="flex flex-wrap gap-1">
+                            {feedbackObj.matchedKeywords && feedbackObj.matchedKeywords.length > 0 ? (
+                              feedbackObj.matchedKeywords.map((kw: string, i: number) => (
+                                <span key={i} className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold">✓ {kw}</span>
+                              ))
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">None matched</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="bg-white/80 p-3 rounded-xl border border-slate-200">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Missing Requirements</p>
+                          <div className="flex flex-wrap gap-1">
+                            {feedbackObj.missingKeywords && feedbackObj.missingKeywords.length > 0 ? (
+                              feedbackObj.missingKeywords.map((kw: string, i: number) => (
+                                <span key={i} className="bg-red-50 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">✗ {kw}</span>
+                              ))
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">None missing</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="space-y-4 mb-6">
                   {selectedApplicant.student.projects && (
                     <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
@@ -1374,6 +1447,14 @@ export function RecruiterDashboard() {
                         {selectedJob.isOpen ? 'Hold Recruiting' : 'Resume Recruiting'}
                       </Button>
                     )}
+                    {selectedJob && (
+                      <Button
+                        onClick={() => setIsScreeningModalOpen(true)}
+                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl py-2 px-4 text-xs transition-all flex items-center gap-1.5 border-none shadow-sm"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" /> AI Screening
+                      </Button>
+                    )}
                     <Button 
                       onClick={() => handleStartEditJob(selectedJobId!)} 
                       className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl py-2 px-4 text-xs transition-all flex items-center gap-1.5 border-none"
@@ -1395,11 +1476,19 @@ export function RecruiterDashboard() {
                       return mcqProg?.mcqResponse?.score ?? -1;
                     };
 
+                    const getAiScore = (app: any) => {
+                      return app.aiScreeningScore ?? -1;
+                    };
+
                     const activeCandidates = applicants.filter(app => app.status !== 'REJECTED' && app.status !== 'DECLINED');
                     const rejectedCandidates = applicants.filter(app => app.status === 'REJECTED' || app.status === 'DECLINED');
 
-                    // Sort active candidates based on selected MCQ sort order
-                    if (mcqSortOrder === 'HIGH_TO_LOW') {
+                    // Sort active candidates based on selected MCQ / AI Match sort order
+                    if (aiSortOrder === 'HIGH_TO_LOW') {
+                      activeCandidates.sort((a, b) => getAiScore(b) - getAiScore(a));
+                    } else if (aiSortOrder === 'LOW_TO_HIGH') {
+                      activeCandidates.sort((a, b) => getAiScore(a) - getAiScore(b));
+                    } else if (mcqSortOrder === 'HIGH_TO_LOW') {
                       activeCandidates.sort((a, b) => getMcqScore(b) - getMcqScore(a));
                     } else if (mcqSortOrder === 'LOW_TO_HIGH') {
                       activeCandidates.sort((a, b) => getMcqScore(a) - getMcqScore(b));
@@ -1423,6 +1512,12 @@ export function RecruiterDashboard() {
                             )}
 
                             <div className="flex flex-wrap gap-2 mt-3">
+                              {app.aiScreeningScore != null && (
+                                <div className="text-[10px] font-bold text-emerald-850 bg-emerald-50 border border-emerald-100 px-2.5 py-1.5 rounded-xl flex items-center gap-1.5">
+                                  <Sparkles className="h-3.5 w-3.5 text-emerald-600 animate-pulse" />
+                                  <span>AI Match: <span className="font-extrabold text-emerald-700">{Math.round(app.aiScreeningScore)}%</span></span>
+                                </div>
+                              )}
                               {(() => {
                                 const mcqProg = app.progressions?.find((p: any) => p.mcqResponse);
                                 if (mcqProg?.mcqResponse) {
@@ -1538,17 +1633,37 @@ export function RecruiterDashboard() {
                         <div className="space-y-4">
                           <div className="flex justify-between items-center bg-slate-50/70 p-4.5 rounded-2xl border border-slate-100">
                             <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider">Active & Shortlisted ({activeCandidates.length})</h3>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-bold text-slate-400">Sort MCQ:</span>
-                              <select
-                                value={mcqSortOrder}
-                                onChange={e => setMcqSortOrder(e.target.value as any)}
-                                className="px-2.5 py-1.5 rounded-xl border border-slate-250 text-[10px] bg-white font-bold outline-none focus:border-purple-650 text-slate-700 shadow-sm"
-                              >
-                                <option value="DEFAULT">Default (Date Applied)</option>
-                                <option value="HIGH_TO_LOW">Score: High to Low</option>
-                                <option value="LOW_TO_HIGH">Score: Low to High</option>
-                              </select>
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-slate-400">Sort MCQ:</span>
+                                <select
+                                  value={mcqSortOrder}
+                                  onChange={e => {
+                                    setMcqSortOrder(e.target.value as any);
+                                    setAiSortOrder('NONE');
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-xl border border-slate-250 text-[10px] bg-white font-bold outline-none focus:border-purple-650 text-slate-700 shadow-sm"
+                                >
+                                  <option value="DEFAULT">Default (Date Applied)</option>
+                                  <option value="HIGH_TO_LOW">Score: High to Low</option>
+                                  <option value="LOW_TO_HIGH">Score: Low to High</option>
+                                </select>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-slate-400">Sort AI Match:</span>
+                                <select
+                                  value={aiSortOrder}
+                                  onChange={e => {
+                                    setAiSortOrder(e.target.value as any);
+                                    setMcqSortOrder('DEFAULT');
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-xl border border-slate-250 text-[10px] bg-white font-bold outline-none focus:border-purple-650 text-slate-700 shadow-sm"
+                                >
+                                  <option value="NONE">None</option>
+                                  <option value="HIGH_TO_LOW">Match: High to Low</option>
+                                  <option value="LOW_TO_HIGH">Match: Low to High</option>
+                                </select>
+                              </div>
                             </div>
                           </div>
                           <div className="space-y-4">
@@ -2530,6 +2645,67 @@ export function RecruiterDashboard() {
                 </form>
               </>
             )}
+          </div>
+      )}
+
+      {/* AI SCREENING MODAL */}
+      {isScreeningModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200 text-left border border-slate-100">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-5">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center border border-purple-100">
+                  <Sparkles className="h-5 w-5 text-purple-650 animate-pulse" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900">AI Candidate Screener</h2>
+                  <p className="text-xs text-slate-500 font-medium">Initial screening match based on keywords</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsScreeningModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center transition-all border-none cursor-pointer"
+              >
+                <X className="h-4 w-4 text-slate-500" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRunScreening} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Screening Keywords & Requirements</label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="Enter comma-separated keywords e.g. React, Node.js, Python, AWS, CGPA 8"
+                  value={screeningKeywords}
+                  onChange={e => setScreeningKeywords(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-2xl outline-none focus:border-purple-500 text-slate-850 text-xs bg-white font-medium shadow-sm leading-relaxed"
+                />
+                <p className="text-[10px] text-slate-450 mt-1.5 leading-relaxed">
+                  💡 The AI screening engine parses each candidate's listed skills, project descriptions, work experience, education history, and cover letter to calculate their match score.
+                </p>
+              </div>
+
+              {/* Footer */}
+              <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
+                <Button 
+                  type="button"
+                  onClick={() => setIsScreeningModalOpen(false)} 
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl px-5 py-2.5 text-xs border-none"
+                  disabled={isScreeningLoading}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit"
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl px-5 py-2.5 text-xs border-none flex items-center gap-1.5"
+                  disabled={isScreeningLoading}
+                >
+                  {isScreeningLoading ? 'Running AI...' : 'Start Screening'}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -74,6 +74,8 @@ model Application {
   job              Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
   student          StudentProfile      @relation(fields: [studentProfileId], references: [id])
   progressions     CandidateProgress[]
+  aiScreeningScore    Float?
+  aiScreeningFeedback String?
 }
 
 model InterviewRound {
