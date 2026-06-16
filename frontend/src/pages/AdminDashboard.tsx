@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AdminService, AnalyticsService } from '../services/api';
 import { Button } from '../components/ui/button';
 import { 
@@ -18,7 +19,10 @@ import {
 export function AdminDashboard() {
   const [recruiters, setRecruiters] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'ANALYTICS' | 'RECRUITERS'>('ANALYTICS');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab = ['ANALYTICS', 'RECRUITERS'].includes(tabParam || '') ? tabParam as any : 'ANALYTICS';
+  const setActiveTab = (tab: string) => setSearchParams({ tab });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { formatTimeAMPM } from '../utils/dateFormatter';
 import { JobService, ApplicationService, AnalyticsService, RoundService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
@@ -69,7 +71,10 @@ export function RecruiterDashboard() {
   });
   const [questionInput, setQuestionInput] = useState('');
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'JOBS' | 'ANALYTICS' | 'MESSAGES' | 'HISTORY'>('JOBS');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab = ['JOBS', 'ANALYTICS', 'MESSAGES', 'HISTORY'].includes(tabParam || '') ? tabParam as any : 'JOBS';
+  const setActiveTab = (tab: string) => setSearchParams({ tab });
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [jobToDelete, setJobToDelete] = useState<{ id: string, title: string } | null>(null);
   
@@ -1941,7 +1946,7 @@ export function RecruiterDashboard() {
                         <div key={msg.id} className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-1">
                           <div className="flex justify-between items-center text-xs">
                             <span className="font-bold text-purple-700">{msg.senderName}</span>
-                            <span className="text-slate-450">{new Date(msg.createdAt).toLocaleString()}</span>
+                            <span className="text-slate-450">{formatTimeAMPM(msg.createdAt)}</span>
                           </div>
                           <p className="text-sm text-slate-700 font-medium whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                         </div>
@@ -2023,7 +2028,7 @@ export function RecruiterDashboard() {
                       {log.action}
                     </span>
                     <span className="font-extrabold text-slate-800">{log.jobTitle}</span>
-                    <span className="text-slate-400 font-medium">• {new Date(log.timestamp).toLocaleString()}</span>
+                    <span className="text-slate-400 font-medium">• {formatTimeAMPM(log.timestamp)}</span>
                   </div>
                   {log.details && (
                     <p className="text-xs text-slate-500 font-semibold leading-relaxed pl-1">{log.details}</p>

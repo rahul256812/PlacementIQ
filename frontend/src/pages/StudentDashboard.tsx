@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { formatTimeAMPM } from '../utils/dateFormatter';
 import { JobService, ApplicationService, AuthService, AnalyticsService, RoundService } from '../services/api';
 import { Button } from '../components/ui/button';
 import { 
@@ -21,13 +23,17 @@ import {
   Layers,
   Volume2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Lock
 } from 'lucide-react';
 
 export function StudentDashboard() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [myApplications, setMyApplications] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'BROWSE' | 'APPLICATIONS' | 'PROFILE' | 'ANALYTICS'>('BROWSE');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const activeTab = ['BROWSE', 'APPLICATIONS', 'PROFILE', 'ANALYTICS'].includes(tabParam || '') ? tabParam as any : 'BROWSE';
+  const setActiveTab = (tab: string) => setSearchParams({ tab });
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [coverLetter, setCoverLetter] = useState('');
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -461,9 +467,6 @@ export function StudentDashboard() {
     setStudentCode(nextState.code);
     setSelectedCodingLanguage(nextState.language);
     setRunResults([]);
-
-    // Lock immediately on select
-    setActiveQuestionLockedId(nextQ.id);
   };
 
   const handleCodingLanguageChange = (lang: string) => {
@@ -720,7 +723,7 @@ export function StudentDashboard() {
                     <Building2 className="h-4 w-4 text-slate-400" /> {app.job.recruiter.companyName}
                   </p>
                   <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                    <Calendar className="h-3.5 w-3.5" /> Applied on {new Date(app.appliedAt).toLocaleDateString()}
+                    <Calendar className="h-3.5 w-3.5" /> Applied on {formatTimeAMPM(app.appliedAt)}
                   </p>
                 </div>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -823,11 +826,11 @@ export function StudentDashboard() {
                                       ) : isCurrent ? (
                                         roundNotStarted ? (
                                           <span className="text-xs text-slate-400 font-semibold flex items-center gap-1">
-                                            🔒 Test opens {new Date(round.startDate!).toLocaleString()}
+                                            🔒 Test opens {formatTimeAMPM(round.startDate)}
                                           </span>
                                         ) : roundEnded ? (
                                           <span className="text-xs text-red-500 font-semibold flex items-center gap-1">
-                                            ⚠️ Test closed on {new Date(round.endDate!).toLocaleString()}
+                                            ⚠️ Test closed on {formatTimeAMPM(round.endDate)}
                                           </span>
                                         ) : (
                                           <button
@@ -860,11 +863,11 @@ export function StudentDashboard() {
                                       isCurrent ? (
                                         roundNotStarted ? (
                                           <span className="text-xs text-slate-400 font-semibold flex items-center gap-1">
-                                            🔒 Test opens {new Date(round.startDate!).toLocaleString()}
+                                            🔒 Test opens {formatTimeAMPM(round.startDate)}
                                           </span>
                                         ) : roundEnded ? (
                                           <span className="text-xs text-red-500 font-semibold flex items-center gap-1">
-                                            ⚠️ Test closed on {new Date(round.endDate!).toLocaleString()}
+                                            ⚠️ Test closed on {formatTimeAMPM(round.endDate)}
                                           </span>
                                         ) : (
                                           <button
@@ -971,7 +974,7 @@ export function StudentDashboard() {
                             <div key={msg.id} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-1">
                               <div className="flex justify-between items-center text-[10px]">
                                 <span className="font-bold text-purple-700">{msg.senderName}</span>
-                                <span className="text-slate-450">{new Date(msg.createdAt).toLocaleString()}</span>
+                                <span className="text-slate-450">{formatTimeAMPM(msg.createdAt)}</span>
                               </div>
                               <p className="text-xs text-slate-600 font-medium whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                             </div>
@@ -1434,7 +1437,8 @@ export function StudentDashboard() {
 
                 <div className="max-h-[60vh] overflow-y-auto pr-2 space-y-6">
                   {/* Question Navigator */}
-                  <div className="flex flex-wrap gap-2 mb-4">
+                  {!mcqQuestions.some(q => q.duration) && (
+                    <div className="flex flex-wrap gap-2 mb-4">
                     {mcqQuestions.map((_, idx) => (
                       <button
                         key={idx}
@@ -1451,6 +1455,7 @@ export function StudentDashboard() {
                       </button>
                     ))}
                   </div>
+                  )}
 
                   {mcqQuestions[currentQuestionIndex] && (() => {
                     const q = mcqQuestions[currentQuestionIndex];
@@ -1499,6 +1504,38 @@ export function StudentDashboard() {
 
                   {mcqQuestions.length === 0 && (
                     <p className="text-slate-400 text-sm text-center py-12">No questions defined for this test.</p>
+                  )}
+
+                  {/* Navigation Buttons */}
+                  {mcqQuestions.length > 0 && (
+                    <div className="flex gap-3 pt-2">
+                      {!mcqQuestions.some(q => q.duration) && currentQuestionIndex > 0 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setCurrentQuestionIndex(prev => prev - 1)}
+                          className="flex-1 font-bold border-slate-200 text-slate-600 hover:bg-slate-50 py-3 rounded-xl"
+                        >
+                          Previous
+                        </Button>
+                      )}
+                      {currentQuestionIndex < mcqQuestions.length - 1 && (
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            const nextIdx = currentQuestionIndex + 1;
+                            setCurrentQuestionIndex(nextIdx);
+                            const nextQ = mcqQuestions[nextIdx];
+                            if (mcqQuestions.some(q => q.duration)) {
+                              setQuestionTimeLeft(nextQ.duration ? Number(nextQ.duration) : null);
+                            }
+                          }}
+                          className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition-all"
+                        >
+                          Next Question
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
 
@@ -1661,7 +1698,7 @@ export function StudentDashboard() {
                     </div>
 
                     {/* RIGHT: Editor Area */}
-                    {activeQuestionLockedId && activeQ ? (
+                    {activeQ ? (
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
                         {/* Left Pane: Challenge Info */}
                         <div className="bg-slate-950 border border-slate-850 rounded-2xl p-5 flex flex-col h-full min-h-0 text-left overflow-y-auto">
@@ -1714,8 +1751,10 @@ export function StudentDashboard() {
 
                         {/* Right Pane: Code Editor & Exec Console */}
                         <div className="flex flex-col h-full min-h-0 space-y-4">
-                          {/* Editor Window */}
-                          <div className="bg-slate-950 border border-slate-850 rounded-2xl flex-1 flex flex-col min-h-0 overflow-hidden relative">
+                          {activeQuestionLockedId === activeQ.id ? (
+                            <>
+                              {/* Editor Window */}
+                              <div className="bg-slate-950 border border-slate-850 rounded-2xl flex-1 flex flex-col min-h-0 overflow-hidden relative">
                             <div className="flex justify-between items-center px-4 py-2 bg-slate-900/80 border-b border-slate-850">
                               <span className="text-[10px] font-black text-slate-450 uppercase tracking-wider">Editor Workspace</span>
                               
@@ -1793,6 +1832,28 @@ export function StudentDashboard() {
                               </button>
                             </div>
                           </div>
+                          </>
+                        ) : (
+                            <div className="flex-1 bg-slate-950 border border-slate-850 rounded-2xl flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+                              <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mb-6 border border-slate-800">
+                                <Lock className="h-8 w-8 text-slate-500" />
+                              </div>
+                              <h3 className="text-xl font-bold text-white mb-3">Ready to solve this?</h3>
+                              <p className="text-sm text-slate-400 mb-8 max-w-sm leading-relaxed mx-auto">
+                                You can browse other questions freely. Once you start coding, you will be locked into this question until you submit your solution.
+                              </p>
+                              <Button 
+                                onClick={() => {
+                                  if (confirm("Are you sure you want to start this question? You will be locked into it until you submit.")) {
+                                    setActiveQuestionLockedId(activeQ.id);
+                                  }
+                                }}
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl text-sm"
+                              >
+                                Start Coding this Question
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ) : (
