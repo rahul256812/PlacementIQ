@@ -3,3 +3,9 @@
 node_modules/
 dist/
 .env
+__pycache__/
+*.pyc
+venv/
+backend/venv/
+backend/__pycache__/
+backend/routes/__pycache__/
