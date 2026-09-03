@@ -1,103 +1,177 @@
-# PlacementIQ
+# PlacementIQ — Campus Placement & Recruitment Management System
 
-PlacementIQ is a comprehensive campus placement management platform. It bridges the gap between students and recruiters by providing a seamless interface to handle job applications, coding assessments, multiple-choice questions (MCQs), and robust administrator analytics.
-
-## Tech Stack
-
-**Frontend:**
-- React 19
-- Vite
-- Tailwind CSS v4
-- React Router DOM
-- Lucide React (Icons)
-- Axios
-
-**Backend:**
-- Node.js & Express.js
-- Prisma (ORM)
-- PostgreSQL
-- JWT Authentication & bcrypt
+PlacementIQ is a high-performance, automated Campus Placement and Recruitment Management Platform. It bridges the gap between university placement cells, corporate recruiters, and student candidates by offering streamlined job postings, multi-stage evaluation pipelines, AI-assisted keyword screening, real-time activity logging, and role-based analytics.
 
 ---
 
-## Features
+## 🛠️ Tech Stack
 
-- **Student Dashboard:** Browse job openings, apply with custom questionnaires/cover letters, take integrated MCQ and Coding assessments, and chat directly with recruiters.
-- **Recruiter Dashboard:** Post new job openings, manage multiple interview rounds (MCQ & Coding), review student applications, approve/reject candidates, and track hiring analytics.
-- **Admin Dashboard:** Monitor overall platform activity, review key placement metrics (placement rate, active jobs, top recruiters), and approve/reject recruiter accounts.
-- **Assessments:** Built-in IDE for coding assessments featuring custom test cases and a seamless MCQ runner with timer configurations.
+### **Frontend**
+* **Framework:** React 18 with Vite (TypeScript)
+* **Styling:** Tailwind CSS, Lucide Icons
+* **API Client:** Axios (Modular API Service Layer)
+
+### **Backend (Python FastAPI)**
+* **Language & Framework:** Python 3.13 + FastAPI (ASGI)
+* **Database ORM:** SQLAlchemy 2.0 (Mapped to PostgreSQL)
+* **Data Validation:** Pydantic v2
+* **Authentication:** Stateless JWT (`PyJWT`) + Salted Password Hashing (`Bcrypt`)
+* **ASGI Server:** Uvicorn
+
+### **Database**
+* **Database Engine:** PostgreSQL (`steps_db`)
 
 ---
 
-## Local Development Setup
+## ✨ Features
 
-To run this project locally, you will need Node.js and PostgreSQL installed.
+### 🎓 **Student / Candidate Portal**
+* **Job Discovery:** View open corporate job opportunities with complete requirement breakdowns.
+* **Streamlined Applications:** Submit applications with custom cover letters and recruiter screening questions.
+* **Application Tracker:** Monitor application status in real-time (`APPLIED`, `SHORTLISTED`, `OFFERED`, `REJECTED`).
+* **Offer Management:** Accept or decline job offers directly from the dashboard.
+* **Profile Management:** Maintain academic history, skills, CGPA, graduation year, and project portfolios.
 
-### 1. Database Setup
-1. Make sure you have a PostgreSQL database running.
-2. Create a new database for the project (e.g., `placementiq`).
+### 🏢 **Recruiter Dashboard**
+* **Job Posting & Custom Questions:** Create job openings with custom candidate screening questionnaires.
+* **Multi-Stage Evaluation Pipelines:** Build customized interview rounds (MCQ, Coding, Technical, HR).
+* **AI Candidate Screening:** Automatically calculate resume and skill keyword match scores (0–100%) against job descriptions.
+* **Applicant Tracking & Shortlisting:** Review applications, assess candidate profiles, and advance top candidates.
+* **Lifecycle & Audit Logging:** Pause, resume, edit, or delete job postings with automated activity logging.
+* **In-App Messaging:** Communicate directly with candidates per job listing.
 
-### 2. Backend Setup
+### 📊 **Administrator Control Panel**
+* **System-Wide Analytics:** Monitor placement rates (%), total placements, open vs closed jobs, and status breakdowns.
+* **Recruiter Verification:** Review and approve pending recruiter account registrations.
+
+---
+
+## ⚡ Local Development Setup
+
+### **Prerequisites**
+* Python 3.11+
+* Node.js 18+
+* PostgreSQL running locally (e.g. port `5431` with database `steps_db`)
+
+---
+
+### **1. Backend Setup (FastAPI)**
+
 Navigate to the `backend` directory:
 ```bash
 cd backend
 ```
 
-Install the dependencies:
+Create and activate a Python virtual environment:
 ```bash
-npm install
+# macOS/Linux
+python3 -m venv venv
+source venv/bin/activate
+
+# Windows
+python -m venv venv
+venv\Scripts\activate
 ```
 
-Configure your environment variables by creating a `.env` file in the `backend` folder:
+Install Python dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+Create a `.env` file inside the `backend` folder:
 ```env
-# Example .env file
-PORT=3000
-DATABASE_URL="postgresql://username:password@localhost:5432/placementiq"
-JWT_SECRET="your-super-secret-jwt-key"
-FRONTEND_URL="http://localhost:5173"
+DATABASE_URL=postgresql://username:password@localhost:5431/steps_db
+JWT_SECRET=supersecret_jwt_key_for_steps_app
 ```
 
-Push the Prisma schema to your database to create the necessary tables:
+Start the FastAPI ASGI development server:
 ```bash
-npx prisma db push
+uvicorn main:app --port 8000 --reload
 ```
 
-Start the backend development server:
-```bash
-npm run dev
-```
+* **Backend API Base:** `http://127.0.0.1:8000`
+* **Swagger Interactive Docs:** `http://127.0.0.1:8000/docs`
 
-### 3. Frontend Setup
+---
+
+### **2. Frontend Setup (React + Vite)**
+
 Open a new terminal window and navigate to the `frontend` directory:
 ```bash
 cd frontend
-```
-
-Install the dependencies:
-```bash
 npm install
 ```
 
-Configure your environment variables by creating a `.env` file in the `frontend` folder:
+Create a `.env` file in the `frontend` folder:
 ```env
-VITE_API_URL=http://localhost:3000/api
+VITE_API_URL=http://127.0.0.1:8000/api
 ```
 
-Start the frontend Vite server:
+Start the Vite development server:
 ```bash
 npm run dev
 ```
 
-The application will be available at `http://localhost:5173`.
+The frontend application will be running at `http://localhost:5173`.
 
 ---
 
-## Deployment Information
+## 🚀 Deployment Guide
 
-- **Frontend:** Typically deployed on Vercel. Make sure to configure `VITE_API_URL` to point to your live backend server. The repository includes a `vercel.json` file designed for React Router Single Page Application (SPA) redirects.
-- **Backend:** Typically deployed on Render or Heroku. Ensure you configure your production `DATABASE_URL`, `JWT_SECRET`, and set the `FRONTEND_URL` to your live Vercel domain to avoid CORS issues. Ensure the build command runs `prisma generate && tsc`.
+### **Frontend (Vercel)**
+1. Connect the GitHub repository to **Vercel**.
+2. Set Environment Variable: `VITE_API_URL=https://your-backend-render-url.onrender.com/api`
+3. Vercel uses the included `vercel.json` for React Router single-page application (SPA) rewrite handling.
+
+### **Backend (Render)**
+1. Connect the GitHub repository to **Render** as a Web Service.
+2. Configure settings:
+   * **Language:** `Python 3`
+   * **Root Directory:** `backend`
+   * **Build Command:** `pip install -r requirements.txt`
+   * **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
+3. Add Environment Variables:
+   * `DATABASE_URL` (Hosted PostgreSQL string)
+   * `JWT_SECRET`
+
+*(Note: The repository also includes a `render.yaml` Blueprint for automatic configuration on Render).*
 
 ---
 
-## License
+## 📁 Repository Structure
+
+```
+PlacementIQ/
+├── backend/
+│   ├── models.py               # SQLAlchemy ORM Database Models
+│   ├── database.py             # DB Engine & Session provider
+│   ├── auth.py                 # JWT issuance, decoding & bcrypt utilities
+│   ├── main.py                 # FastAPI application entry point & CORS
+│   ├── requirements.txt        # Python package requirements
+│   └── routes/
+│       ├── auth.py             # Authentication & profile routes
+│       ├── jobs.py             # Job CRUD, round pipelines, logs & messages
+│       ├── applications.py     # Application processing & AI screening
+│       ├── analytics.py        # Student, Recruiter & Admin metrics
+│       ├── rounds.py           # Interview round management
+│       └── admin.py            # Admin profile approvals
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/         # Modals, UI layouts & cards
+│   │   ├── pages/              # Dashboards (Student, Recruiter, Admin)
+│   │   ├── services/api.ts     # Axios API service layer
+│   │   ├── App.tsx             # Main React Router
+│   │   └── main.tsx            # React entry
+│   ├── vercel.json             # SPA router rewrite config
+│   └── package.json
+│
+├── render.yaml                 # Render infrastructure-as-code configuration
+├── PlacementIQ_System_Documentation.pdf
+└── README.md
+```
+
+---
+
+## 📄 License
 Private / Proprietary.
